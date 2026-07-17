@@ -1,13 +1,14 @@
 :root {
-  --bg: #f5f6f8;
-  --surface: #ffffff;
-  --border: #e2e5ea;
-  --text: #1a1d24;
-  --text-muted: #6b7280;
-  --accent: #2563eb;
-  --accent-muted: #dbe6fd;
-  --positive: #16803c;
-  --negative: #dc2626;
+  --color-bg: #f5f6f8;
+  --color-bg-hover: #ffffff;
+  --color-top-bar-bg: #ffffff;
+  --color-top-bar-hover: #f5f6f8;
+  --color-text: #1a1d24;
+  --color-primary-action: #2563eb;
+  --color-primary-action-hover: #dde3ea;
+  --color-accent-green: #16803c;
+  --color-accent-red: #dc2626;
+  --color-accent-blue: #6b7280;
   --radius: 10px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
 }
@@ -25,8 +26,8 @@ body,
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 button {
@@ -115,8 +116,8 @@ table {
 }
 
 .card {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--color-bg-hover);
+  border: 1px solid var(--color-primary-action-hover);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 20px;
@@ -135,34 +136,34 @@ table {
 }
 
 .btn {
-  border: 1px solid var(--border);
-  background: var(--surface);
+  border: 1px solid var(--color-primary-action-hover);
+  background: var(--color-bg-hover);
   border-radius: 8px;
   padding: 8px 14px;
   font-size: 14px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--color-text);
 }
 
 .btn:hover {
-  background: var(--bg);
+  background: var(--color-bg);
 }
 
 .btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: white;
+  background: var(--color-primary-action);
+  border-color: var(--color-primary-action);
+  color: var(--color-primary-action-text, white);
 }
 
 .btn-primary:hover {
   opacity: 0.9;
-  background: var(--accent);
+  background: var(--color-primary-action);
 }
 
 .btn-danger {
-  color: var(--negative);
-  border-color: var(--negative);
-  background: var(--surface);
+  color: var(--color-accent-red);
+  border-color: var(--color-accent-red);
+  background: var(--color-bg-hover);
 }
 
 .btn:disabled {
@@ -180,7 +181,7 @@ table {
 .field label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--color-accent-blue);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -188,18 +189,18 @@ table {
 .field input,
 .field select {
   padding: 8px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-primary-action-hover);
   border-radius: 6px;
-  color: var(--text);
+  color: var(--color-text);
 }
 
 .amount-positive {
-  color: var(--positive);
+  color: var(--color-accent-green);
   font-weight: 600;
 }
 
 .amount-negative {
-  color: var(--negative);
+  color: var(--color-accent-red);
   font-weight: 600;
 }
 
@@ -235,7 +236,7 @@ table {
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-muted);
+  color: var(--color-accent-blue);
   font-weight: 600;
 }
 
@@ -247,12 +248,12 @@ table {
 
 .marquee .sub {
   margin-top: 8px;
-  color: var(--text-muted);
+  color: var(--color-accent-blue);
   font-size: 13px;
 }
 
 .empty-state {
-  color: var(--text-muted);
+  color: var(--color-accent-blue);
   text-align: center;
   padding: 32px;
 }
@@ -269,7 +270,7 @@ table {
 }
 
 .anchor-required p {
-  color: var(--text-muted);
+  color: var(--color-accent-blue);
   font-size: 14px;
   max-width: 440px;
   margin: 0 auto 20px;
@@ -292,7 +293,7 @@ table {
 }
 
 .modal {
-  background: var(--surface);
+  background: var(--color-bg-hover);
   border-radius: var(--radius);
   padding: 24px;
   width: 420px;
@@ -325,7 +326,7 @@ table {
 
 .month-group h3 {
   font-size: 14px;
-  color: var(--text-muted);
+  color: var(--color-accent-blue);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin: 0 0 8px;
@@ -335,14 +336,14 @@ table {
   text-align: left;
   font-size: 12px;
   text-transform: uppercase;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
+  color: var(--color-accent-blue);
+  border-bottom: 1px solid var(--color-primary-action-hover);
   padding: 8px 10px;
 }
 
 .data-table td {
   padding: 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--color-primary-action-hover);
   font-size: 14px;
 }
 
@@ -351,12 +352,12 @@ table {
 }
 
 .row-highlight td {
-  background: var(--accent-muted);
+  background: var(--color-primary-action-hover);
   transition: background 1.8s ease-out;
 }
 
 .text-muted {
-  color: var(--text-muted);
+  color: var(--color-accent-blue);
 }
 
 .stat-row {
@@ -371,7 +372,7 @@ table {
 
 .stat-row .stat-label {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--color-accent-blue);
   text-transform: uppercase;
   font-weight: 600;
 }
@@ -385,7 +386,7 @@ table {
 .tab-bar {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--color-primary-action-hover);
   margin-bottom: 20px;
 }
 
@@ -396,18 +397,18 @@ table {
   padding: 10px 16px;
   font-size: 14px;
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--color-accent-blue);
   cursor: pointer;
   margin-bottom: -1px;
 }
 
 .tab-button:hover {
-  color: var(--text);
+  color: var(--color-text);
 }
 
 .tab-button.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+  color: var(--color-primary-action);
+  border-bottom-color: var(--color-primary-action);
   font-weight: 600;
 }
 
@@ -416,7 +417,7 @@ table {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--color-primary-action-hover);
 }
 
 .ledger-nav-title {
@@ -426,7 +427,7 @@ table {
 .ledger-nav-bottom {
   justify-content: center;
   border-bottom: none;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--color-primary-action-hover);
   font-weight: 600;
   font-size: 14px;
 }
@@ -441,7 +442,7 @@ table {
 }
 
 .ledger-marker {
-  background: var(--bg) !important;
+  background: var(--color-bg) !important;
 }
 
 .ledger-marker td {
@@ -449,9 +450,9 @@ table {
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: var(--text-muted);
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  color: var(--color-accent-blue);
+  border-top: 1px solid var(--color-primary-action-hover);
+  border-bottom: 1px solid var(--color-primary-action-hover);
 }
 
 .ledger-actions {
@@ -466,35 +467,35 @@ table {
   padding: 0;
   font-size: 12.5px;
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--color-accent-blue);
   text-decoration: underline;
   cursor: pointer;
 }
 
 .btn-link:hover {
-  color: var(--accent);
+  color: var(--color-primary-action);
 }
 
 .btn-link-danger:hover {
-  color: var(--negative);
+  color: var(--color-accent-red);
 }
 
 .sidebar-collapse-toggle {
   background: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-primary-action-hover);
   border-radius: 6px;
   width: 24px;
   height: 24px;
   line-height: 1;
   font-size: 13px;
-  color: var(--text-muted);
+  color: var(--color-accent-blue);
   cursor: pointer;
   flex-shrink: 0;
 }
 
 .sidebar-collapse-toggle:hover {
-  background: var(--bg);
-  color: var(--text);
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 .month-nav-years {
@@ -512,19 +513,19 @@ table {
   padding: 6px 4px;
   font-size: 13.5px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--color-text);
   cursor: pointer;
   border-radius: 6px;
 }
 
 .month-nav-year:hover {
-  background: var(--bg);
+  background: var(--color-bg);
 }
 
 .month-nav-year span {
   display: inline-block;
   width: 14px;
-  color: var(--text-muted);
+  color: var(--color-accent-blue);
   font-size: 11px;
 }
 
@@ -542,18 +543,18 @@ table {
   border: none;
   padding: 5px 8px;
   font-size: 13px;
-  color: var(--text-muted);
+  color: var(--color-accent-blue);
   cursor: pointer;
   border-radius: 6px;
 }
 
 .month-nav-month:hover {
-  background: var(--bg);
-  color: var(--text);
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 .month-nav-month.active {
-  background: var(--accent-muted);
-  color: var(--accent);
+  background: var(--color-primary-action-hover);
+  color: var(--color-primary-action);
   font-weight: 600;
 }

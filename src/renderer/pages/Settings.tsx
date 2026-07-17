@@ -301,7 +301,7 @@ export default function Settings() {
 
             {feeYearRange.length > 0 && (
               <div style={{ marginTop: 20 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-accent-blue)', textTransform: 'uppercase' }}>
                   Years Added
                 </label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
@@ -315,11 +315,11 @@ export default function Settings() {
                           alignItems: 'center',
                           gap: 6,
                           fontSize: 13,
-                          border: '1px solid var(--border)',
+                          border: '1px solid var(--color-primary-action-hover)',
                           borderRadius: 6,
                           padding: '4px 10px',
                           cursor: 'pointer',
-                          background: marked ? 'var(--accent-muted)' : 'transparent',
+                          background: marked ? 'var(--color-primary-action-hover)' : 'transparent',
                         }}
                       >
                         <input

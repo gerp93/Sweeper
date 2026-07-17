@@ -165,7 +165,7 @@ export default function ImportTransactions() {
       </div>
 
       {error && (
-        <div className="card" style={{ marginTop: 16, color: 'var(--negative)' }}>
+        <div className="card" style={{ marginTop: 16, color: 'var(--color-accent-red)' }}>
           {error}
         </div>
       )}
@@ -231,7 +231,7 @@ export default function ImportTransactions() {
                           onChange={(e) => updateOverride(idx, { friendlyName: e.target.value })}
                           style={{
                             padding: '4px 6px',
-                            border: '1px solid var(--border)',
+                            border: '1px solid var(--color-primary-action-hover)',
                             borderRadius: 6,
                             width: '100%',
                           }}

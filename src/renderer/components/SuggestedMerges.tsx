@@ -146,9 +146,9 @@ export default function SuggestedMerges({ accounts, transactions, onMerged }: Pr
         return (
           <div
             key={key}
-            style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 10 }}
+            style={{ border: '1px solid var(--color-primary-action-hover)', borderRadius: 8, padding: 12, marginBottom: 10 }}
           >
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+            <div style={{ fontSize: 12, color: 'var(--color-accent-blue)', marginBottom: 8 }}>
               similarity {Math.round(group.maxScore * 100)}%
             </div>
             {group.accounts.map((a) => (

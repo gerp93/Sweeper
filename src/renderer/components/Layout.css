@@ -1,7 +1,7 @@
 .sidebar {
   width: 220px;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+  background: var(--color-top-bar-bg);
+  border-right: 1px solid var(--color-primary-action-hover);
   padding: 20px 12px;
   flex-shrink: 0;
 }
@@ -28,25 +28,25 @@
   display: block;
   padding: 9px 10px;
   border-radius: 8px;
-  color: var(--text-muted);
+  color: var(--color-accent-blue);
   text-decoration: none;
   font-size: 14px;
   font-weight: 500;
 }
 
 .sidebar a:hover {
-  background: var(--bg);
-  color: var(--text);
+  background: var(--color-top-bar-hover);
+  color: var(--color-text);
 }
 
 .sidebar a.active {
-  background: var(--accent-muted);
-  color: var(--accent);
+  background: var(--color-primary-action-hover);
+  color: var(--color-primary-action);
 }
 
 .sidebar-right {
   border-right: none;
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--color-primary-action-hover);
 }
 
 .sidebar-right.collapsed {

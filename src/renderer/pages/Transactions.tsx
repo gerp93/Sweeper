@@ -230,7 +230,7 @@ export default function Transactions() {
                             background: 'transparent',
                             fontSize: 13,
                           }}
-                          onFocus={(e) => (e.target.style.border = '1px solid var(--border)')}
+                          onFocus={(e) => (e.target.style.border = '1px solid var(--color-primary-action-hover)')}
                         />
                       </td>
                       <td
