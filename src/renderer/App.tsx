@@ -6,22 +6,26 @@ import Accounts from './pages/Accounts';
 import Settings from './pages/Settings';
 import Layout from './components/Layout';
 import { RightSidebarProvider } from './context/RightSidebarContext';
+import { ThemeProvider } from './context/ThemeContext';
+import './themes.css';
 
 function App() {
   return (
-    <RightSidebarProvider>
-      <Router>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/import" element={<ImportTransactions />} />
-            <Route path="/transactions" element={<Transactions />} />
-            <Route path="/accounts" element={<Accounts />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
-        </Layout>
-      </Router>
-    </RightSidebarProvider>
+    <ThemeProvider>
+      <RightSidebarProvider>
+        <Router>
+          <Layout>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/import" element={<ImportTransactions />} />
+              <Route path="/transactions" element={<Transactions />} />
+              <Route path="/accounts" element={<Accounts />} />
+              <Route path="/settings" element={<Settings />} />
+            </Routes>
+          </Layout>
+        </Router>
+      </RightSidebarProvider>
+    </ThemeProvider>
   );
 }
 

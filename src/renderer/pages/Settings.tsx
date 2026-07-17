@@ -3,6 +3,8 @@ import { BalanceAnchor } from '../../shared/types/balanceAnchor';
 import { HelocSettings } from '../../shared/types/helocSettings';
 import CurrencyInput from '../components/CurrencyInput';
 import { todayIso } from '../utils/format';
+import { useTheme } from '../context/ThemeContext';
+import { THEME_LABELS } from '../utils/themes';
 
 const MONTH_NAMES = [
   'January',
@@ -20,6 +22,7 @@ const MONTH_NAMES = [
 ];
 
 export default function Settings() {
+  const { currentTheme, setTheme, availableThemes } = useTheme();
   const [loading, setLoading] = useState(true);
 
   const [helocSettings, setHelocSettings] = useState<HelocSettings | null>(null);
@@ -161,6 +164,27 @@ export default function Settings() {
     <div>
       <div className="page-header">
         <h1>Settings</h1>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <h2 style={{ fontSize: 15, marginTop: 0 }}>Theme</h2>
+        <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
+          Choose your preferred color theme for the app.
+        </p>
+        <div className="field">
+          <label>App Theme</label>
+          <select
+            value={currentTheme || ''}
+            onChange={(e) => setTheme(e.target.value as any)}
+            style={{ maxWidth: 300 }}
+          >
+            {availableThemes.map((theme) => (
+              <option key={theme} value={theme}>
+                {THEME_LABELS[theme]}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>
