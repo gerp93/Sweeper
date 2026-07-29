@@ -71,15 +71,13 @@
         {
           "target": "dmg",
           "arch": [
-            "x64",
-            "arm64"
+            "universal"
           ]
         },
         {
           "target": "zip",
           "arch": [
-            "x64",
-            "arm64"
+            "universal"
           ]
         }
       ],
@@ -99,7 +97,8 @@
     "publish": {
       "provider": "github",
       "owner": "gerp93",
-      "repo": "Sweeper"
+      "repo": "Sweeper",
+      "draft": false
     }
   }
 }
