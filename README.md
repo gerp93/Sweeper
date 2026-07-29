@@ -15,3 +15,19 @@ npm run dev
 npm run build
 npm run package
 ```
+
+## Releases
+
+Every push to `main` triggers the [Build workflow](.github/workflows/build.yml), which packages Sweeper for Windows, macOS, and Linux via `electron-builder` and uploads the installers as workflow run artifacts.
+
+To download a build:
+
+1. Go to the [Actions tab](../../actions/workflows/build.yml) and open the latest successful run on `main`.
+2. Download the artifact for your platform from the **Artifacts** section at the bottom of the run summary:
+   - `sweeper-win` — Windows installer (`.exe`)
+   - `sweeper-mac` — macOS disk image (`.dmg`)
+   - `sweeper-linux` — Linux AppImage
+
+These builds are unsigned (no code-signing certificate is configured), so Windows SmartScreen and macOS Gatekeeper will warn about an unrecognized publisher — you'll need to click through ("More info" → "Run anyway" on Windows, or right-click → "Open" on macOS) to launch it.
+
+Artifacts are retained by GitHub for a limited time (default 90 days). For a permanent, versioned download link, cut a [GitHub Release](../../releases) and attach the installers manually, or extend the workflow to publish releases automatically.
