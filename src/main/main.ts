@@ -23,6 +23,11 @@ import { CreateBalanceAnchorInput } from '../shared/types/balanceAnchor';
 import { UpdateHelocSettingsInput } from '../shared/types/helocSettings';
 import { Database } from 'sql.js';
 
+// Packaged builds resolve app.getPath('userData') from build.productName ("Sweeper"),
+// while `electron .` in dev resolves it from package.json's "name" ("sweeper") -- pin it
+// so both modes always read/write the same data folder instead of silently diverging.
+app.setName('sweeper');
+
 let mainWindow: BrowserWindow | null = null;
 let db: Database | null = null;
 let accountService: AccountService;
@@ -39,6 +44,7 @@ function createWindow() {
     height: 860,
     minWidth: 900,
     minHeight: 600,
+    icon: path.join(__dirname, '../../../assets/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,

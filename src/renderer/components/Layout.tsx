@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import './Layout.css';
 import { useRightSidebarState } from '../context/RightSidebarContext';
 import FeeReminderBanner from './FeeReminderBanner';
+import logo from '../assets/logo.png';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', end: true },
@@ -20,7 +21,10 @@ export default function Layout({ children }: { children: ReactNode }) {
       <FeeReminderBanner />
       <div className="app-shell">
         <nav className="sidebar">
-          <div className="sidebar-title">Sweeper</div>
+          <div className="sidebar-title">
+            <img src={logo} alt="" className="sidebar-logo" />
+            Sweeper
+          </div>
           <ul>
             {NAV_ITEMS.map((item) => (
               <li key={item.to}>

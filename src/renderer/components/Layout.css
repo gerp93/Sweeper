@@ -9,10 +9,18 @@
 .sidebar-title {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 10px;
   font-size: 18px;
   font-weight: 700;
   padding: 0 10px 20px;
+}
+
+.sidebar-logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  flex-shrink: 0;
 }
 
 .sidebar ul {
