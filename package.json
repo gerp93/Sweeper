@@ -46,7 +46,8 @@
     "appId": "com.sweeper.app",
     "productName": "Sweeper",
     "files": [
-      "dist/**/*"
+      "dist/**/*",
+      "assets/**/*"
     ],
     "directories": {
       "output": "release"
