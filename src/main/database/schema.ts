@@ -1,14 +1,15 @@
 import initSqlJs, { Database } from 'sql.js';
 import * as path from 'path';
 import * as fs from 'fs';
-import { app } from 'electron';
+import { getEffectiveDbPath } from '../dbLocation';
 
 let dbInstance: Database | null = null;
+let currentDbPath: string | null = null;
 
-export async function initDatabase(): Promise<Database> {
+export async function initDatabase(dbPath?: string): Promise<Database> {
   const SQL = await initSqlJs();
-  const userDataPath = app.getPath('userData');
-  const dbPath = path.join(userDataPath, 'sweeper.db');
+  dbPath = dbPath ?? getEffectiveDbPath();
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
   let db: Database;
 
@@ -20,6 +21,7 @@ export async function initDatabase(): Promise<Database> {
   }
 
   dbInstance = db;
+  currentDbPath = dbPath;
 
   db.run('PRAGMA foreign_keys = ON');
 
@@ -147,8 +149,7 @@ export async function initDatabase(): Promise<Database> {
 
 export function saveDatabase(db: Database, dbPath?: string): void {
   if (!dbPath) {
-    const userDataPath = app.getPath('userData');
-    dbPath = path.join(userDataPath, 'sweeper.db');
+    dbPath = currentDbPath ?? getEffectiveDbPath();
   }
   const data = db.export();
   fs.writeFileSync(dbPath, Buffer.from(data));

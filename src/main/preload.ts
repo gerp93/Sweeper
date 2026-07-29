@@ -58,4 +58,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     markFeeYear: (year: number) => ipcRenderer.invoke('helocSettings:markFeeYear', year),
     unmarkFeeYear: (year: number) => ipcRenderer.invoke('helocSettings:unmarkFeeYear', year),
   },
+
+  dbLocation: {
+    get: () => ipcRenderer.invoke('dbLocation:get'),
+    browseExisting: () => ipcRenderer.invoke('dbLocation:browseExisting'),
+    browseNew: () => ipcRenderer.invoke('dbLocation:browseNew'),
+    set: (newPath: string) => ipcRenderer.invoke('dbLocation:set', newPath),
+    resetToDefault: () => ipcRenderer.invoke('dbLocation:resetToDefault'),
+  },
 });
