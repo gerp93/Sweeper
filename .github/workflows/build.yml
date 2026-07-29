@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -36,50 +39,14 @@ jobs:
       - name: Build renderer + main
         run: npm run build
 
-      - name: Package app (${{ matrix.platform }})
-        run: npx electron-builder --${{ matrix.platform }} --publish=never
+      # electron-updater matches versions by semver, and every push to main publishes a
+      # release, so give each run its own patch version without committing it back to the repo.
+      - name: Set build version
+        run: npm version "1.0.${{ github.run_number }}" --no-git-tag-version --allow-same-version
+
+      - name: Package and publish (${{ matrix.platform }})
+        run: npx electron-builder --${{ matrix.platform }} --publish always
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # No Apple/Windows signing certs configured — build unsigned artifacts.
           CSC_IDENTITY_AUTO_DISCOVERY: false
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: sweeper-${{ matrix.platform }}
-          path: |
-            release/*.exe
-            release/*.dmg
-            release/*.AppImage
-            release/*.zip
-            release/*.deb
-          if-no-files-found: ignore
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download all platform artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: sweeper-*
-          path: release-artifacts
-          merge-multiple: true
-
-      - name: Determine release tag
-        id: version
-        run: |
-          pkg_version=$(node -p "require('./package.json').version")
-          echo "tag=v${pkg_version}-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
-
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: ${{ steps.version.outputs.tag }}
-          generate_release_notes: true
-          files: release-artifacts/*
