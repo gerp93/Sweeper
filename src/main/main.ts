@@ -1,6 +1,13 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
 import { initDatabase, saveDatabase } from './database/schema';
+import {
+  getEffectiveDbPath,
+  getDefaultDbPath,
+  isUsingDefaultLocation,
+  setDbPath,
+  resetToDefaultDbPath,
+} from './dbLocation';
 import { AccountService } from './database/accountService';
 import { TransactionService } from './database/transactionService';
 import { ImportRuleService } from './database/importRuleService';
@@ -155,6 +162,53 @@ function registerIPCHandlers() {
   });
   ipcMain.handle('helocSettings:unmarkFeeYear', (_, year: number) => {
     helocSettingsService.unmarkFeeYear(year);
+    return { success: true };
+  });
+
+  // Database location handlers
+  ipcMain.handle('dbLocation:get', () => ({
+    path: getEffectiveDbPath(),
+    isDefault: isUsingDefaultLocation(),
+    defaultPath: getDefaultDbPath(),
+  }));
+
+  ipcMain.handle('dbLocation:browseExisting', async () => {
+    if (!mainWindow) return null;
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose an existing Sweeper database file',
+      properties: ['openFile'],
+      filters: [{ name: 'SQLite Database', extensions: ['db', 'sqlite', 'sqlite3'] }],
+    });
+    return result.canceled ? null : result.filePaths[0];
+  });
+
+  ipcMain.handle('dbLocation:browseNew', async () => {
+    if (!mainWindow) return null;
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Choose where to store the Sweeper database',
+      defaultPath: 'sweeper.db',
+      filters: [{ name: 'SQLite Database', extensions: ['db'] }],
+    });
+    return result.canceled ? null : result.filePath ?? null;
+  });
+
+  ipcMain.handle('dbLocation:set', (_, newPath: string) => {
+    if (db) {
+      saveDatabase(db);
+    }
+    setDbPath(newPath);
+    app.relaunch();
+    app.exit();
+    return { success: true };
+  });
+
+  ipcMain.handle('dbLocation:resetToDefault', () => {
+    if (db) {
+      saveDatabase(db);
+    }
+    resetToDefaultDbPath();
+    app.relaunch();
+    app.exit();
     return { success: true };
   });
 }

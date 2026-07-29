@@ -25,6 +25,11 @@ export default function Settings() {
   const { currentTheme, setTheme, availableThemes } = useTheme();
   const [loading, setLoading] = useState(true);
 
+  const [dbLocation, setDbLocation] = useState<{ path: string; isDefault: boolean; defaultPath: string } | null>(
+    null
+  );
+  const [dbBusy, setDbBusy] = useState(false);
+
   const [helocSettings, setHelocSettings] = useState<HelocSettings | null>(null);
   const [originalAmount, setOriginalAmount] = useState('');
   const [originationDate, setOriginationDate] = useState('');
@@ -45,7 +50,29 @@ export default function Settings() {
 
   useEffect(() => {
     load();
+    window.electronAPI.dbLocation.get().then(setDbLocation);
   }, []);
+
+  async function handleUseExistingFile() {
+    const picked = await window.electronAPI.dbLocation.browseExisting();
+    if (!picked) return;
+    setDbBusy(true);
+    await window.electronAPI.dbLocation.set(picked);
+    // App relaunches immediately after set() to load the new file.
+  }
+
+  async function handleCreateNewLocation() {
+    const picked = await window.electronAPI.dbLocation.browseNew();
+    if (!picked) return;
+    setDbBusy(true);
+    await window.electronAPI.dbLocation.set(picked);
+  }
+
+  async function handleResetToDefault() {
+    if (!confirm(`Switch back to the default database location (${dbLocation?.defaultPath})?`)) return;
+    setDbBusy(true);
+    await window.electronAPI.dbLocation.resetToDefault();
+  }
 
   async function load() {
     setLoading(true);
@@ -185,6 +212,40 @@ export default function Settings() {
             ))}
           </select>
         </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <h2 style={{ fontSize: 15, marginTop: 0 }}>Database Location</h2>
+        <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
+          Sweeper stores everything in a single SQLite file. Point it at a file in a synced folder (OneDrive,
+          Dropbox, etc.) to keep an off-device copy, or switch between files for different data sets.
+        </p>
+        {dbLocation && (
+          <>
+            <div className="field">
+              <label>Current File{dbLocation.isDefault ? ' (default)' : ''}</label>
+              <input value={dbLocation.path} readOnly style={{ fontFamily: 'monospace', fontSize: 12 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn" disabled={dbBusy} onClick={handleUseExistingFile}>
+                Use Existing File…
+              </button>
+              <button className="btn" disabled={dbBusy} onClick={handleCreateNewLocation}>
+                Create New File Here…
+              </button>
+              {!dbLocation.isDefault && (
+                <button className="btn" disabled={dbBusy} onClick={handleResetToDefault}>
+                  Reset to Default
+                </button>
+              )}
+            </div>
+            {dbBusy && (
+              <p className="text-muted" style={{ fontSize: 13, marginTop: 8 }}>
+                Restarting Sweeper to load the new location…
+              </p>
+            )}
+          </>
+        )}
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>

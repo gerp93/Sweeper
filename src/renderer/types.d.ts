@@ -52,6 +52,13 @@ declare global {
         markFeeYear: (year: number) => Promise<{ success: boolean }>;
         unmarkFeeYear: (year: number) => Promise<{ success: boolean }>;
       };
+      dbLocation: {
+        get: () => Promise<{ path: string; isDefault: boolean; defaultPath: string }>;
+        browseExisting: () => Promise<string | null>;
+        browseNew: () => Promise<string | null>;
+        set: (newPath: string) => Promise<{ success: boolean }>;
+        resetToDefault: () => Promise<{ success: boolean }>;
+      };
     };
   }
 }
