@@ -98,7 +98,7 @@
       "provider": "github",
       "owner": "gerp93",
       "repo": "Sweeper",
-      "draft": false
+      "releaseType": "release"
     }
   }
 }
