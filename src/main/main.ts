@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import { initDatabase, saveDatabase } from './database/schema';
 import {
@@ -60,6 +61,39 @@ function createWindow() {
   });
 }
 
+function setupAutoUpdater() {
+  if (!app.isPackaged) return;
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-downloaded', (info) => {
+    dialog
+      .showMessageBox(mainWindow!, {
+        type: 'info',
+        title: 'Update ready',
+        message: `Sweeper ${info.version} has been downloaded.`,
+        detail: 'Restart now to install it, or it will install automatically the next time you quit.',
+        buttons: ['Restart Now', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+      })
+      .then((result) => {
+        if (result.response === 0) {
+          autoUpdater.quitAndInstall();
+        }
+      });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('Auto-update error:', err);
+  });
+
+  autoUpdater.checkForUpdates().catch((err) => {
+    console.error('Failed to check for updates:', err);
+  });
+}
+
 app.whenReady().then(async () => {
   db = await initDatabase();
   accountService = new AccountService(db);
@@ -75,6 +109,7 @@ app.whenReady().then(async () => {
   registerIPCHandlers();
 
   createWindow();
+  setupAutoUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
