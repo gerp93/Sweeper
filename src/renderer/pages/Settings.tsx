@@ -21,9 +21,12 @@ const MONTH_NAMES = [
   'December',
 ];
 
+type SettingsTab = 'app' | 'data';
+
 export default function Settings() {
   const { currentTheme, setTheme, availableThemes } = useTheme();
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<SettingsTab>('data');
 
   const [dbLocation, setDbLocation] = useState<{ path: string; isDefault: boolean; defaultPath: string } | null>(
     null
@@ -212,246 +215,278 @@ export default function Settings() {
         <h1>Settings</h1>
       </div>
 
-      <div className="card" style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 15, marginTop: 0 }}>Updates</h2>
-        <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
-          {appVersion ? `You're running version ${appVersion}.` : 'Loading version…'}
-        </p>
-        <button
-          className="btn"
-          disabled={updateStatus === 'checking' || updateStatus === 'unsupported'}
-          onClick={handleCheckForUpdates}
-        >
-          {updateStatus === 'checking' ? 'Checking…' : 'Check for Updates'}
+      <div className="tab-bar">
+        <button className={`tab-button${activeTab === 'data' ? ' active' : ''}`} onClick={() => setActiveTab('data')}>
+          HELOC & Balance
         </button>
-        {updateStatus === 'not-available' && (
-          <p className="text-muted" style={{ fontSize: 13, marginTop: 8, marginBottom: 0 }}>
-            You're up to date.
-          </p>
-        )}
-        {updateStatus === 'available' && (
-          <p className="amount-positive" style={{ fontSize: 13, marginTop: 8, marginBottom: 0 }}>
-            {updateMessage}
-          </p>
-        )}
-        {updateStatus === 'error' && (
-          <p className="amount-negative" style={{ fontSize: 13, marginTop: 8, marginBottom: 0 }}>
-            Check failed: {updateMessage}
-          </p>
-        )}
-        {updateStatus === 'unsupported' && (
-          <p className="text-muted" style={{ fontSize: 13, marginTop: 8, marginBottom: 0 }}>
-            Update checks are only available in a packaged build, not in dev mode.
-          </p>
-        )}
+        <button className={`tab-button${activeTab === 'app' ? ' active' : ''}`} onClick={() => setActiveTab('app')}>
+          App Setup
+        </button>
       </div>
 
-      <div className="card" style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 15, marginTop: 0 }}>Theme</h2>
-        <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
-          Choose your preferred color theme for the app.
-        </p>
-        <div className="field">
-          <label>App Theme</label>
-          <select
-            value={currentTheme || ''}
-            onChange={(e) => setTheme(e.target.value as any)}
-            style={{ maxWidth: 300 }}
-          >
-            {availableThemes.map((theme) => (
-              <option key={theme} value={theme}>
-                {THEME_LABELS[theme]}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 15, marginTop: 0 }}>Database Location</h2>
-        <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
-          Sweeper stores everything in a single SQLite file. Point it at a file in a synced folder (OneDrive,
-          Dropbox, etc.) to keep an off-device copy, or switch between files for different data sets.
-        </p>
-        {dbLocation && (
-          <>
-            <div className="field">
-              <label>Current File{dbLocation.isDefault ? ' (default)' : ''}</label>
-              <input value={dbLocation.path} readOnly style={{ fontFamily: 'monospace', fontSize: 12 }} />
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button className="btn" disabled={dbBusy} onClick={handleUseExistingFile}>
-                Use Existing File…
-              </button>
-              <button className="btn" disabled={dbBusy} onClick={handleCreateNewLocation}>
-                Create New File Here…
-              </button>
-              {!dbLocation.isDefault && (
-                <button className="btn" disabled={dbBusy} onClick={handleResetToDefault}>
-                  Reset to Default
-                </button>
-              )}
-            </div>
-            {dbBusy && (
-              <p className="text-muted" style={{ fontSize: 13, marginTop: 8 }}>
-                Restarting Sweeper to load the new location…
+      {activeTab === 'app' && (
+        <>
+          <div className="card" style={{ marginBottom: 20 }}>
+            <h2 style={{ fontSize: 15, marginTop: 0 }}>Updates</h2>
+            <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
+              {appVersion ? `You're running version ${appVersion}.` : 'Loading version…'}
+            </p>
+            <button
+              className="btn"
+              disabled={updateStatus === 'checking' || updateStatus === 'unsupported'}
+              onClick={handleCheckForUpdates}
+            >
+              {updateStatus === 'checking' ? 'Checking…' : 'Check for Updates'}
+            </button>
+            {updateStatus === 'not-available' && (
+              <p className="text-muted" style={{ fontSize: 13, marginTop: 8, marginBottom: 0 }}>
+                You're up to date.
               </p>
             )}
-          </>
-        )}
-      </div>
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 15, marginTop: 0 }}>Starting Balance</h2>
-        <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
-          This is the amount that was originally available to draw on the loan on day one — or, if you don't have
-          transaction history going back that far, whatever was available as of whatever date your data actually
-          starts from. Everything else is computed forward (or backward) from this one point.
-        </p>
-        <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
-          There's only ever one starting balance — editing it replaces whatever was set before.
-        </p>
-        {loading ? (
-          <div className="empty-state">Loading…</div>
-        ) : (
-          <>
-            <div className="grid-2">
-              <div className="field">
-                <label>HELOC Balance</label>
-                <CurrencyInput value={anchorBalance} onChange={setAnchorBalance} placeholder="e.g. $28,398.23" />
-              </div>
-              <div className="field">
-                <label>As Of Date</label>
-                <input type="date" value={anchorDate} onChange={(e) => setAnchorDate(e.target.value)} />
-              </div>
-            </div>
-            <div className="field">
-              <label>Note (optional)</label>
-              <input
-                value={anchorNote}
-                onChange={(e) => setAnchorNote(e.target.value)}
-                placeholder="e.g. beginning of July"
-              />
-            </div>
-            <button
-              className="btn btn-primary"
-              disabled={!anchorDirty || !anchorValid || savingAnchor}
-              onClick={handleSaveAnchor}
-            >
-              {savingAnchor ? 'Saving…' : 'Save'}
-            </button>
-          </>
-        )}
-      </div>
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 15, marginTop: 0 }}>HELOC Details</h2>
-        <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
-          Static facts about the line of credit itself — not used in the spendable balance calculation, just kept
-          for reference.
-        </p>
-        {loading ? (
-          <div className="empty-state">Loading…</div>
-        ) : (
-          <>
-            <div className="grid-2">
-              <div className="field">
-                <label>Original HELOC Amount</label>
-                <CurrencyInput value={originalAmount} onChange={setOriginalAmount} placeholder="e.g. $200,000.00" />
-              </div>
-              <div className="field">
-                <label>Origination Date</label>
-                <input type="date" value={originationDate} onChange={(e) => setOriginationDate(e.target.value)} />
-              </div>
-            </div>
-            <button className="btn btn-primary" disabled={!detailsDirty || savingDetails} onClick={handleSaveDetails}>
-              {savingDetails ? 'Saving…' : 'Save'}
-            </button>
-          </>
-        )}
-      </div>
-
-      <div className="card">
-        <h2 style={{ fontSize: 15, marginTop: 0 }}>Annual Fee Reminder</h2>
-        <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
-          This charge hits the HELOC directly and never appears in a checking-account import — set it here and
-          you'll get a reminder banner when it's coming up or overdue for the year.
-        </p>
-        {loading ? (
-          <div className="empty-state">Loading…</div>
-        ) : (
-          <>
-            <div className="grid-2">
-              <div className="field">
-                <label>Annual AIO HELOC Fee</label>
-                <CurrencyInput value={annualFeeAmount} onChange={setAnnualFeeAmount} placeholder="e.g. $50.00" />
-              </div>
-              <div className="field">
-                <label>Fee Date (recurs yearly)</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <select value={annualFeeMonth} onChange={(e) => setAnnualFeeMonth(e.target.value)}>
-                    <option value="">Month…</option>
-                    {MONTH_NAMES.map((name, idx) => (
-                      <option key={idx} value={idx + 1}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                  <select value={annualFeeDay} onChange={(e) => setAnnualFeeDay(e.target.value)}>
-                    <option value="">Day…</option>
-                    {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-                      <option key={d} value={d}>
-                        {d}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <button className="btn btn-primary" disabled={!feeDirty || savingFee} onClick={handleSaveFee}>
-              {savingFee ? 'Saving…' : 'Save'}
-            </button>
-
-            {feeYearRange.length > 0 && (
-              <div style={{ marginTop: 20 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-accent-blue)', textTransform: 'uppercase' }}>
-                  Years Added
-                </label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
-                  {feeYearRange.map((year) => {
-                    const marked = feeYears.has(year);
-                    return (
-                      <label
-                        key={year}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          fontSize: 13,
-                          border: '1px solid var(--color-primary-action-hover)',
-                          borderRadius: 6,
-                          padding: '4px 10px',
-                          cursor: 'pointer',
-                          background: marked ? 'var(--color-primary-action-hover)' : 'transparent',
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={marked}
-                          onChange={() => toggleFeeYear(year, marked)}
-                          style={{ width: 'auto' }}
-                        />
-                        {year}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
+            {updateStatus === 'available' && (
+              <p className="amount-positive" style={{ fontSize: 13, marginTop: 8, marginBottom: 0 }}>
+                {updateMessage}
+              </p>
             )}
-          </>
-        )}
-      </div>
+            {updateStatus === 'error' && (
+              <p className="amount-negative" style={{ fontSize: 13, marginTop: 8, marginBottom: 0 }}>
+                Check failed: {updateMessage}
+              </p>
+            )}
+            {updateStatus === 'unsupported' && (
+              <p className="text-muted" style={{ fontSize: 13, marginTop: 8, marginBottom: 0 }}>
+                Update checks are only available in a packaged build, not in dev mode.
+              </p>
+            )}
+          </div>
+
+          <div className="card" style={{ marginBottom: 20 }}>
+            <h2 style={{ fontSize: 15, marginTop: 0 }}>Theme</h2>
+            <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
+              Choose your preferred color theme for the app.
+            </p>
+            <div className="field">
+              <label>App Theme</label>
+              <select
+                value={currentTheme || ''}
+                onChange={(e) => setTheme(e.target.value as any)}
+                style={{ maxWidth: 300 }}
+              >
+                {availableThemes.map((theme) => (
+                  <option key={theme} value={theme}>
+                    {THEME_LABELS[theme]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginBottom: 20 }}>
+            <h2 style={{ fontSize: 15, marginTop: 0 }}>Database Location</h2>
+            <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
+              Sweeper stores everything in a single SQLite file. Point it at a file in a synced folder (OneDrive,
+              Dropbox, etc.) to keep an off-device copy, or switch between files for different data sets.
+            </p>
+            {dbLocation && (
+              <>
+                <div className="field">
+                  <label>Current File{dbLocation.isDefault ? ' (default)' : ''}</label>
+                  <input value={dbLocation.path} readOnly style={{ fontFamily: 'monospace', fontSize: 12 }} />
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className="btn" disabled={dbBusy} onClick={handleUseExistingFile}>
+                    Use Existing File…
+                  </button>
+                  <button className="btn" disabled={dbBusy} onClick={handleCreateNewLocation}>
+                    Create New File Here…
+                  </button>
+                  {!dbLocation.isDefault && (
+                    <button className="btn" disabled={dbBusy} onClick={handleResetToDefault}>
+                      Reset to Default
+                    </button>
+                  )}
+                </div>
+                {dbBusy && (
+                  <p className="text-muted" style={{ fontSize: 13, marginTop: 8 }}>
+                    Restarting Sweeper to load the new location…
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        </>
+      )}
+
+      {activeTab === 'data' && (
+        <>
+          <div className="card" style={{ marginBottom: 20 }}>
+            <h2 style={{ fontSize: 15, marginTop: 0 }}>Starting Balance</h2>
+            <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
+              This is the amount that was originally available to draw on the loan on day one — or, if you don't
+              have transaction history going back that far, whatever was available as of whatever date your data
+              actually starts from. Everything else is computed forward (or backward) from this one point.
+            </p>
+            <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
+              There's only ever one starting balance — editing it replaces whatever was set before.
+            </p>
+            {loading ? (
+              <div className="empty-state">Loading…</div>
+            ) : (
+              <>
+                <div className="grid-2">
+                  <div className="field">
+                    <label>HELOC Balance</label>
+                    <CurrencyInput value={anchorBalance} onChange={setAnchorBalance} placeholder="e.g. $28,398.23" />
+                  </div>
+                  <div className="field">
+                    <label>As Of Date</label>
+                    <input type="date" value={anchorDate} onChange={(e) => setAnchorDate(e.target.value)} />
+                  </div>
+                </div>
+                <div className="field">
+                  <label>Note (optional)</label>
+                  <input
+                    value={anchorNote}
+                    onChange={(e) => setAnchorNote(e.target.value)}
+                    placeholder="e.g. beginning of July"
+                  />
+                </div>
+                <button
+                  className="btn btn-primary"
+                  disabled={!anchorDirty || !anchorValid || savingAnchor}
+                  onClick={handleSaveAnchor}
+                >
+                  {savingAnchor ? 'Saving…' : 'Save'}
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className="card" style={{ marginBottom: 20 }}>
+            <h2 style={{ fontSize: 15, marginTop: 0 }}>HELOC Details</h2>
+            <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
+              Static facts about the line of credit itself — not used in the spendable balance calculation, just
+              kept for reference.
+            </p>
+            {loading ? (
+              <div className="empty-state">Loading…</div>
+            ) : (
+              <>
+                <div className="grid-2">
+                  <div className="field">
+                    <label>Original HELOC Amount</label>
+                    <CurrencyInput
+                      value={originalAmount}
+                      onChange={setOriginalAmount}
+                      placeholder="e.g. $200,000.00"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Origination Date</label>
+                    <input type="date" value={originationDate} onChange={(e) => setOriginationDate(e.target.value)} />
+                  </div>
+                </div>
+                <button
+                  className="btn btn-primary"
+                  disabled={!detailsDirty || savingDetails}
+                  onClick={handleSaveDetails}
+                >
+                  {savingDetails ? 'Saving…' : 'Save'}
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className="card">
+            <h2 style={{ fontSize: 15, marginTop: 0 }}>Annual Fee Reminder</h2>
+            <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
+              This charge hits the HELOC directly and never appears in a checking-account import — set it here and
+              you'll get a reminder banner when it's coming up or overdue for the year.
+            </p>
+            {loading ? (
+              <div className="empty-state">Loading…</div>
+            ) : (
+              <>
+                <div className="grid-2">
+                  <div className="field">
+                    <label>Annual AIO HELOC Fee</label>
+                    <CurrencyInput value={annualFeeAmount} onChange={setAnnualFeeAmount} placeholder="e.g. $50.00" />
+                  </div>
+                  <div className="field">
+                    <label>Fee Date (recurs yearly)</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <select value={annualFeeMonth} onChange={(e) => setAnnualFeeMonth(e.target.value)}>
+                        <option value="">Month…</option>
+                        {MONTH_NAMES.map((name, idx) => (
+                          <option key={idx} value={idx + 1}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                      <select value={annualFeeDay} onChange={(e) => setAnnualFeeDay(e.target.value)}>
+                        <option value="">Day…</option>
+                        {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                          <option key={d} value={d}>
+                            {d}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <button className="btn btn-primary" disabled={!feeDirty || savingFee} onClick={handleSaveFee}>
+                  {savingFee ? 'Saving…' : 'Save'}
+                </button>
+
+                {feeYearRange.length > 0 && (
+                  <div style={{ marginTop: 20 }}>
+                    <label
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: 'var(--color-accent-blue)',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      Years Added
+                    </label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
+                      {feeYearRange.map((year) => {
+                        const marked = feeYears.has(year);
+                        return (
+                          <label
+                            key={year}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              fontSize: 13,
+                              border: '1px solid var(--color-primary-action-hover)',
+                              borderRadius: 6,
+                              padding: '4px 10px',
+                              cursor: 'pointer',
+                              background: marked ? 'var(--color-primary-action-hover)' : 'transparent',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={marked}
+                              onChange={() => toggleFeeYear(year, marked)}
+                              style={{ width: 'auto' }}
+                            />
+                            {year}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

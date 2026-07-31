@@ -49,7 +49,7 @@
 
 .sidebar a.active {
   background: var(--color-primary-action-hover);
-  color: var(--color-primary-action);
+  color: var(--color-text);
 }
 
 .sidebar-right {

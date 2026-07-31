@@ -216,12 +216,6 @@ export default function Transactions() {
     });
   }, [monthTransactions, bom]);
 
-  const visibleLedgerRows = useMemo(
-    () => ledgerRows.filter(({ tx }) => matchesFilters(tx)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ledgerRows, filters]
-  );
-
   const netCashFlow = bom && eom ? eom.balance - bom.balance : monthTransactions.reduce((s, t) => s + t.amount, 0);
 
   function goToMonth(delta: number) {
@@ -289,69 +283,6 @@ export default function Transactions() {
         </button>
       </div>
 
-      <div className="filter-bar">
-        <div className="filter-field">
-          <label>Description</label>
-          <input
-            value={filters.description}
-            onChange={(e) => updateFilter('description', e.target.value)}
-            placeholder="Search description…"
-          />
-        </div>
-        <div className="filter-field">
-          <label>Account</label>
-          <select value={filters.accountId} onChange={(e) => updateFilter('accountId', e.target.value)}>
-            <option value="">All accounts</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.friendlyName}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="filter-field">
-          <label>Memo</label>
-          <input
-            value={filters.memo}
-            onChange={(e) => updateFilter('memo', e.target.value)}
-            placeholder="Search memo…"
-          />
-        </div>
-        <div className="filter-field">
-          <label>Date Range</label>
-          <div className="filter-range">
-            <input type="date" value={filters.dateFrom} onChange={(e) => updateFilter('dateFrom', e.target.value)} />
-            <span>–</span>
-            <input type="date" value={filters.dateTo} onChange={(e) => updateFilter('dateTo', e.target.value)} />
-          </div>
-        </div>
-        <div className="filter-field">
-          <label>Amount Range</label>
-          <div className="filter-range">
-            <input
-              type="number"
-              step="0.01"
-              placeholder="Min"
-              value={filters.amountMin}
-              onChange={(e) => updateFilter('amountMin', e.target.value)}
-            />
-            <span>–</span>
-            <input
-              type="number"
-              step="0.01"
-              placeholder="Max"
-              value={filters.amountMax}
-              onChange={(e) => updateFilter('amountMax', e.target.value)}
-            />
-          </div>
-        </div>
-        {hasActiveFilters && (
-          <button className="btn-link" onClick={clearFilters}>
-            Clear filters
-          </button>
-        )}
-      </div>
-
       <div className="tab-bar">
         <button
           className={`tab-button${viewMode === 'month' ? ' active' : ''}`}
@@ -363,6 +294,75 @@ export default function Transactions() {
           All Transactions
         </button>
       </div>
+
+      {viewMode === 'all' && (
+        <div className="filter-bar">
+          <div className="filter-field">
+            <label>Description</label>
+            <input
+              value={filters.description}
+              onChange={(e) => updateFilter('description', e.target.value)}
+              placeholder="Search description…"
+            />
+          </div>
+          <div className="filter-field">
+            <label>Account</label>
+            <select value={filters.accountId} onChange={(e) => updateFilter('accountId', e.target.value)}>
+              <option value="">All accounts</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.friendlyName}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="filter-field">
+            <label>Memo</label>
+            <input
+              value={filters.memo}
+              onChange={(e) => updateFilter('memo', e.target.value)}
+              placeholder="Search memo…"
+            />
+          </div>
+          <div className="filter-field">
+            <label>Date Range</label>
+            <div className="filter-range">
+              <input
+                type="date"
+                value={filters.dateFrom}
+                onChange={(e) => updateFilter('dateFrom', e.target.value)}
+              />
+              <span>–</span>
+              <input type="date" value={filters.dateTo} onChange={(e) => updateFilter('dateTo', e.target.value)} />
+            </div>
+          </div>
+          <div className="filter-field">
+            <label>Amount Range</label>
+            <div className="filter-range">
+              <input
+                type="number"
+                step="0.01"
+                placeholder="Min"
+                value={filters.amountMin}
+                onChange={(e) => updateFilter('amountMin', e.target.value)}
+              />
+              <span>–</span>
+              <input
+                type="number"
+                step="0.01"
+                placeholder="Max"
+                value={filters.amountMax}
+                onChange={(e) => updateFilter('amountMax', e.target.value)}
+              />
+            </div>
+          </div>
+          {hasActiveFilters && (
+            <button className="btn-link" onClick={clearFilters}>
+              Clear filters
+            </button>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="empty-state">Loading…</div>
@@ -420,14 +420,14 @@ export default function Transactions() {
                     <td></td>
                   </tr>
 
-                  {visibleLedgerRows.length === 0 ? (
+                  {ledgerRows.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="empty-state">
-                        {ledgerRows.length === 0 ? 'No transactions this month.' : 'No transactions match the current filters.'}
+                        No transactions this month.
                       </td>
                     </tr>
                   ) : (
-                    visibleLedgerRows.map(({ tx, balance }) => (
+                    ledgerRows.map(({ tx, balance }) => (
                       <tr key={tx.id}>
                         <td>{formatDate(tx.date)}</td>
                         <td>{tx.description}</td>
