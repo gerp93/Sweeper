@@ -16,7 +16,7 @@ declare global {
         update: (id: string, input: UpdateAccountInput) => Promise<Account>;
         delete: (id: string) => Promise<{ success: boolean }>;
         findOrCreate: (rawName: string, friendlyName: string) => Promise<Account>;
-        merge: (sourceId: string, targetId: string) => Promise<Account>;
+        merge: (sourceId: string, targetId: string, memo?: string | null) => Promise<Account>;
       };
       transactions: {
         getAll: () => Promise<Transaction[]>;

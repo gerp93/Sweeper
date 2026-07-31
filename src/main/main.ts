@@ -184,8 +184,8 @@ function registerIPCHandlers() {
   ipcMain.handle('accounts:findOrCreate', (_, rawName: string, friendlyName: string) =>
     accountService.findOrCreateByRawName(rawName, friendlyName)
   );
-  ipcMain.handle('accounts:merge', (_, sourceId: string, targetId: string) =>
-    accountService.mergeAccounts(sourceId, targetId)
+  ipcMain.handle('accounts:merge', (_, sourceId: string, targetId: string, memo?: string | null) =>
+    accountService.mergeAccounts(sourceId, targetId, memo)
   );
 
   // Transaction handlers

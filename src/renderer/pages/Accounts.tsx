@@ -40,10 +40,20 @@ export default function Accounts() {
     setTimeout(() => setHighlightId((current) => (current === id ? null : current)), 2000);
   }
 
-  async function handleSave(friendlyName: string) {
+  async function handleSave(friendlyName: string, rawName: string) {
     if (!editing) return;
     const id = editing.id;
-    await window.electronAPI.accounts.update(id, { friendlyName });
+    try {
+      await window.electronAPI.accounts.update(id, { friendlyName, rawName });
+    } catch (err: any) {
+      const message = String(err?.message ?? err);
+      alert(
+        message.includes('UNIQUE constraint failed') && message.includes('raw_name')
+          ? `Couldn't save: another account already has that raw bank description.`
+          : `Couldn't save: ${message}`
+      );
+      return;
+    }
     setEditing(null);
     await load();
     flash(id);
@@ -55,9 +65,9 @@ export default function Accounts() {
     await load();
   }
 
-  async function handleMerge(targetId: string) {
+  async function handleMerge(targetId: string, memo: string | null) {
     if (!merging) return;
-    await window.electronAPI.accounts.merge(merging.id, targetId);
+    await window.electronAPI.accounts.merge(merging.id, targetId, memo);
     setMerging(null);
     await load();
     flash(targetId);
