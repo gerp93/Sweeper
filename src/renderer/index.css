@@ -40,6 +40,8 @@ select,
 textarea {
   font-family: inherit;
   font-size: 14px;
+  background: var(--color-bg-hover);
+  color: var(--color-text);
 }
 
 table {
@@ -191,6 +193,7 @@ table {
   padding: 8px 10px;
   border: 1px solid var(--color-primary-action-hover);
   border-radius: 6px;
+  background: var(--color-bg-hover);
   color: var(--color-text);
 }
 
@@ -557,4 +560,11 @@ table {
   background: var(--color-primary-action-hover);
   color: var(--color-primary-action);
   font-weight: 600;
+}
+
+/* bubblegum's white input text and light-pink --color-bg-hover don't have enough contrast together. */
+body.bubblegum-theme input,
+body.bubblegum-theme select,
+body.bubblegum-theme textarea {
+  background: var(--color-top-bar-bg);
 }
