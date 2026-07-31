@@ -16,7 +16,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     delete: (id: string) => ipcRenderer.invoke('accounts:delete', id),
     findOrCreate: (rawName: string, friendlyName: string) =>
       ipcRenderer.invoke('accounts:findOrCreate', rawName, friendlyName),
-    merge: (sourceId: string, targetId: string) => ipcRenderer.invoke('accounts:merge', sourceId, targetId),
+    merge: (sourceId: string, targetId: string, memo?: string | null) =>
+      ipcRenderer.invoke('accounts:merge', sourceId, targetId, memo),
   },
 
   transactions: {

@@ -104,7 +104,7 @@ export class AccountService {
     return this.createAccount({ rawName, friendlyName });
   }
 
-  mergeAccounts(sourceId: string, targetId: string): Account {
+  mergeAccounts(sourceId: string, targetId: string, memo?: string | null): Account {
     if (sourceId === targetId) {
       throw new Error('Cannot merge an account into itself');
     }
@@ -114,11 +114,27 @@ export class AccountService {
     if (!target) throw new Error(`Account with id ${targetId} not found`);
 
     const now = new Date().toISOString();
-    this.db.run(`UPDATE transactions SET account_id = ?, updated_at = ? WHERE account_id = ?`, [
-      targetId,
-      now,
-      sourceId,
-    ]);
+    const trimmedMemo = memo?.trim();
+
+    if (trimmedMemo) {
+      // Only the transactions moving over from the source account get the memo appended --
+      // ones already sitting on the target account are left untouched.
+      this.db.run(
+        `UPDATE transactions
+         SET account_id = ?,
+             memo = CASE WHEN memo IS NULL OR memo = '' THEN ? ELSE memo || '; ' || ? END,
+             updated_at = ?
+         WHERE account_id = ?`,
+        [targetId, trimmedMemo, trimmedMemo, now, sourceId]
+      );
+    } else {
+      this.db.run(`UPDATE transactions SET account_id = ?, updated_at = ? WHERE account_id = ?`, [
+        targetId,
+        now,
+        sourceId,
+      ]);
+    }
+
     this.db.run(`DELETE FROM accounts WHERE id = ?`, [sourceId]);
 
     saveDatabase(this.db);
