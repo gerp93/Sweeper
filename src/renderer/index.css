@@ -568,3 +568,83 @@ body.bubblegum-theme select,
 body.bubblegum-theme textarea {
   background: var(--color-top-bar-bg);
 }
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  background: var(--color-bg-hover);
+  border: 1px solid var(--color-primary-action-hover);
+  border-radius: var(--radius);
+}
+
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-field label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-accent-blue);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.filter-field input,
+.filter-field select {
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid var(--color-primary-action-hover);
+  border-radius: 6px;
+  min-width: 140px;
+}
+
+.filter-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-range input {
+  min-width: 90px;
+}
+
+.filter-bar > .btn-link {
+  margin-bottom: 6px;
+}
+
+.sortable-th {
+  cursor: pointer;
+  user-select: none;
+}
+
+.sortable-th:hover {
+  color: var(--color-text);
+}
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-top: 1px solid var(--color-primary-action-hover);
+  font-size: 13px;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pagination-controls select {
+  padding: 4px 6px;
+  font-size: 13px;
+  border: 1px solid var(--color-primary-action-hover);
+  border-radius: 6px;
+}
