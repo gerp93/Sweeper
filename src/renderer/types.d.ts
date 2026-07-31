@@ -59,6 +59,16 @@ declare global {
         set: (newPath: string) => Promise<{ success: boolean }>;
         resetToDefault: () => Promise<{ success: boolean }>;
       };
+      app: {
+        getVersion: () => Promise<string>;
+      };
+      updates: {
+        check: () => Promise<{
+          status: 'available' | 'not-available' | 'error' | 'unsupported';
+          version?: string;
+          message?: string;
+        }>;
+      };
     };
   }
 }

@@ -30,6 +30,12 @@ export default function Settings() {
   );
   const [dbBusy, setDbBusy] = useState(false);
 
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<
+    'idle' | 'checking' | 'available' | 'not-available' | 'error' | 'unsupported'
+  >('idle');
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+
   const [helocSettings, setHelocSettings] = useState<HelocSettings | null>(null);
   const [originalAmount, setOriginalAmount] = useState('');
   const [originationDate, setOriginationDate] = useState('');
@@ -51,7 +57,20 @@ export default function Settings() {
   useEffect(() => {
     load();
     window.electronAPI.dbLocation.get().then(setDbLocation);
+    window.electronAPI.app.getVersion().then(setAppVersion);
   }, []);
+
+  async function handleCheckForUpdates() {
+    setUpdateStatus('checking');
+    setUpdateMessage(null);
+    const result = await window.electronAPI.updates.check();
+    setUpdateStatus(result.status);
+    if (result.status === 'available') {
+      setUpdateMessage(`Version ${result.version} is downloading in the background.`);
+    } else if (result.status === 'error') {
+      setUpdateMessage(result.message ?? 'Something went wrong.');
+    }
+  }
 
   async function handleUseExistingFile() {
     const picked = await window.electronAPI.dbLocation.browseExisting();
@@ -191,6 +210,40 @@ export default function Settings() {
     <div>
       <div className="page-header">
         <h1>Settings</h1>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <h2 style={{ fontSize: 15, marginTop: 0 }}>Updates</h2>
+        <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
+          {appVersion ? `You're running version ${appVersion}.` : 'Loading version…'}
+        </p>
+        <button
+          className="btn"
+          disabled={updateStatus === 'checking' || updateStatus === 'unsupported'}
+          onClick={handleCheckForUpdates}
+        >
+          {updateStatus === 'checking' ? 'Checking…' : 'Check for Updates'}
+        </button>
+        {updateStatus === 'not-available' && (
+          <p className="text-muted" style={{ fontSize: 13, marginTop: 8, marginBottom: 0 }}>
+            You're up to date.
+          </p>
+        )}
+        {updateStatus === 'available' && (
+          <p className="amount-positive" style={{ fontSize: 13, marginTop: 8, marginBottom: 0 }}>
+            {updateMessage}
+          </p>
+        )}
+        {updateStatus === 'error' && (
+          <p className="amount-negative" style={{ fontSize: 13, marginTop: 8, marginBottom: 0 }}>
+            Check failed: {updateMessage}
+          </p>
+        )}
+        {updateStatus === 'unsupported' && (
+          <p className="text-muted" style={{ fontSize: 13, marginTop: 8, marginBottom: 0 }}>
+            Update checks are only available in a packaged build, not in dev mode.
+          </p>
+        )}
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>

@@ -100,6 +100,43 @@ function setupAutoUpdater() {
   });
 }
 
+interface UpdateCheckResult {
+  status: 'available' | 'not-available' | 'error' | 'unsupported';
+  version?: string;
+  message?: string;
+}
+
+function checkForUpdatesNow(): Promise<UpdateCheckResult> {
+  if (!app.isPackaged) {
+    return Promise.resolve({ status: 'unsupported' });
+  }
+
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      autoUpdater.removeListener('update-available', onAvailable);
+      autoUpdater.removeListener('update-not-available', onNotAvailable);
+      autoUpdater.removeListener('error', onError);
+    };
+    const onAvailable = (info: { version: string }) => {
+      cleanup();
+      resolve({ status: 'available', version: info.version });
+    };
+    const onNotAvailable = () => {
+      cleanup();
+      resolve({ status: 'not-available' });
+    };
+    const onError = (err: Error) => {
+      cleanup();
+      resolve({ status: 'error', message: err?.message ?? String(err) });
+    };
+
+    autoUpdater.once('update-available', onAvailable);
+    autoUpdater.once('update-not-available', onNotAvailable);
+    autoUpdater.once('error', onError);
+    autoUpdater.checkForUpdates().catch(onError);
+  });
+}
+
 app.whenReady().then(async () => {
   db = await initDatabase();
   accountService = new AccountService(db);
@@ -252,4 +289,8 @@ function registerIPCHandlers() {
     app.exit();
     return { success: true };
   });
+
+  // App / update handlers
+  ipcMain.handle('app:getVersion', () => app.getVersion());
+  ipcMain.handle('updates:check', () => checkForUpdatesNow());
 }
