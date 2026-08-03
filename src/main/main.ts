@@ -127,7 +127,16 @@ function checkForUpdatesNow(): Promise<UpdateCheckResult> {
     };
     const onError = (err: Error) => {
       cleanup();
-      resolve({ status: 'error', message: err?.message ?? String(err) });
+      const message = err?.message ?? String(err);
+      // A CI release job uploads the installer before it generates/uploads the update
+      // manifest (it needs the installer's own SHA512 first) -- a check that lands in that
+      // multi-minute gap 404s on the manifest even though the release itself is live.
+      resolve({
+        status: 'error',
+        message: message.includes('Cannot find latest')
+          ? 'A new version may still be uploading -- try again in a few minutes.'
+          : message,
+      });
     };
 
     autoUpdater.once('update-available', onAvailable);
