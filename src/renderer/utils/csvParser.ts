@@ -117,6 +117,47 @@ export function isDuplicateTransaction(
   });
 }
 
+export interface AmountDateCollision {
+  date: string;
+  amount: number;
+  rows: number[]; // indices into the array of rows being imported that collide
+}
+
+// Flags rows sharing the same date+amount as another row being imported, or as a
+// transaction already in the database -- regardless of account. This is a separate,
+// stricter check than isDuplicateTransaction (which also requires matching
+// description/refCheck): it exists to catch a real duplicate that got mis-tagged
+// under a different account and so slipped past the exact-match dedup above.
+export function findSameDayAmountCollisions(
+  rowsToImport: { date: string; amount: number }[],
+  existingTransactions: Transaction[]
+): AmountDateCollision[] {
+  const groups = new Map<string, { date: string; amount: number; rows: number[]; existingCount: number }>();
+
+  const keyOf = (date: string, amount: number) => `${date}|${amount}`;
+
+  rowsToImport.forEach((row, idx) => {
+    const key = keyOf(row.date, row.amount);
+    const group = groups.get(key) ?? { date: row.date, amount: row.amount, rows: [], existingCount: 0 };
+    group.rows.push(idx);
+    groups.set(key, group);
+  });
+
+  for (const tx of existingTransactions) {
+    const key = keyOf(tx.date, tx.amount);
+    const group = groups.get(key);
+    if (group) group.existingCount++;
+  }
+
+  const collisions: AmountDateCollision[] = [];
+  for (const group of groups.values()) {
+    if (group.rows.length + group.existingCount >= 2) {
+      collisions.push({ date: group.date, amount: group.amount, rows: group.rows });
+    }
+  }
+  return collisions;
+}
+
 export function parseStatementCSV(
   csvText: string,
   rules: ImportRule[],

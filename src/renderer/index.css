@@ -230,6 +230,11 @@ table {
   color: #166534;
 }
 
+.pill-unreconciled {
+  background: #e5e7eb;
+  color: #4b5563;
+}
+
 .marquee {
   text-align: center;
   padding: 40px 20px;

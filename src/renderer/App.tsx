@@ -1,7 +1,7 @@
-import { HashRouter as Router, Routes, Route } from 'react-router-dom';
-import Dashboard from './pages/Dashboard';
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import ImportTransactions from './pages/ImportTransactions';
 import Transactions from './pages/Transactions';
+import ReconciliationPage from './pages/Reconciliation';
 import Accounts from './pages/Accounts';
 import Settings from './pages/Settings';
 import Layout from './components/Layout';
@@ -16,9 +16,10 @@ function App() {
         <Router>
           <Layout>
             <Routes>
-              <Route path="/" element={<Dashboard />} />
+              <Route path="/" element={<Transactions />} />
+              <Route path="/transactions" element={<Navigate to="/" replace />} />
               <Route path="/import" element={<ImportTransactions />} />
-              <Route path="/transactions" element={<Transactions />} />
+              <Route path="/reconcile" element={<ReconciliationPage />} />
               <Route path="/accounts" element={<Accounts />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>

@@ -4,6 +4,7 @@ import { ImportRule, CreateImportRuleInput, UpdateImportRuleInput } from '../sha
 import { ImportBatch, CreateImportBatchInput } from '../shared/types/importBatch';
 import { BalanceAnchor, CreateBalanceAnchorInput, SpendableBalance } from '../shared/types/balanceAnchor';
 import { HelocSettings, UpdateHelocSettingsInput } from '../shared/types/helocSettings';
+import { Reconciliation, CreateReconciliationInput } from '../shared/types/reconciliation';
 
 declare global {
   interface Window {
@@ -51,6 +52,11 @@ declare global {
         getFeeYears: () => Promise<number[]>;
         markFeeYear: (year: number) => Promise<{ success: boolean }>;
         unmarkFeeYear: (year: number) => Promise<{ success: boolean }>;
+      };
+      reconciliations: {
+        getAll: () => Promise<Reconciliation[]>;
+        create: (input: CreateReconciliationInput) => Promise<Reconciliation>;
+        delete: (id: string) => Promise<{ success: boolean }>;
       };
       dbLocation: {
         get: () => Promise<{ path: string; isDefault: boolean; defaultPath: string }>;
