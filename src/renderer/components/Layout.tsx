@@ -6,9 +6,9 @@ import FeeReminderBanner from './FeeReminderBanner';
 import logo from '../assets/logo.png';
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', end: true },
+  { to: '/', label: 'Transactions', end: true },
   { to: '/import', label: 'Import' },
-  { to: '/transactions', label: 'Transactions' },
+  { to: '/reconcile', label: 'Reconcile' },
   { to: '/accounts', label: 'Accounts' },
   { to: '/settings', label: 'Settings' },
 ];

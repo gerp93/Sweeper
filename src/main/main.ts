@@ -16,12 +16,14 @@ import { ImportBatchService } from './database/importBatchService';
 import { BalanceAnchorService } from './database/balanceAnchorService';
 import { BalanceService } from './database/balanceService';
 import { HelocSettingsService } from './database/helocSettingsService';
+import { ReconciliationService } from './database/reconciliationService';
 import { CreateAccountInput, UpdateAccountInput } from '../shared/types/account';
 import { CreateTransactionInput, UpdateTransactionInput } from '../shared/types/transaction';
 import { CreateImportRuleInput, UpdateImportRuleInput } from '../shared/types/importRule';
 import { CreateImportBatchInput } from '../shared/types/importBatch';
 import { CreateBalanceAnchorInput } from '../shared/types/balanceAnchor';
 import { UpdateHelocSettingsInput } from '../shared/types/helocSettings';
+import { CreateReconciliationInput } from '../shared/types/reconciliation';
 import { Database } from 'sql.js';
 
 // Packaged builds resolve app.getPath('userData') from build.productName ("Sweeper"),
@@ -38,6 +40,7 @@ let importBatchService: ImportBatchService;
 let balanceAnchorService: BalanceAnchorService;
 let balanceService: BalanceService;
 let helocSettingsService: HelocSettingsService;
+let reconciliationService: ReconciliationService;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -155,6 +158,7 @@ app.whenReady().then(async () => {
   balanceAnchorService = new BalanceAnchorService(db);
   balanceService = new BalanceService(balanceAnchorService, transactionService);
   helocSettingsService = new HelocSettingsService(db);
+  reconciliationService = new ReconciliationService(db, balanceService);
 
   importRuleService.seedDefaultRules();
 
@@ -249,6 +253,16 @@ function registerIPCHandlers() {
   });
   ipcMain.handle('helocSettings:unmarkFeeYear', (_, year: number) => {
     helocSettingsService.unmarkFeeYear(year);
+    return { success: true };
+  });
+
+  // Reconciliation handlers
+  ipcMain.handle('reconciliations:getAll', () => reconciliationService.getAllReconciliations());
+  ipcMain.handle('reconciliations:create', (_, input: CreateReconciliationInput) =>
+    reconciliationService.createReconciliation(input)
+  );
+  ipcMain.handle('reconciliations:delete', (_, id: string) => {
+    reconciliationService.deleteReconciliation(id);
     return { success: true };
   });
 

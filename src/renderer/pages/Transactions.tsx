@@ -3,9 +3,12 @@ import { Link } from 'react-router-dom';
 import { Transaction, CreateTransactionInput } from '../../shared/types/transaction';
 import { Account } from '../../shared/types/account';
 import { SpendableBalance } from '../../shared/types/balanceAnchor';
+import { Reconciliation } from '../../shared/types/reconciliation';
+import { HelocSettings } from '../../shared/types/helocSettings';
 import TransactionForm from '../components/TransactionForm';
 import MonthNavSidebar from '../components/MonthNavSidebar';
 import { useSetRightSidebar } from '../context/RightSidebarContext';
+import { reconciledThrough } from '../utils/reconciliation';
 import {
   formatCurrency,
   formatDate,
@@ -55,6 +58,9 @@ const MEMO_INPUT_STYLE: CSSProperties = {
 export default function Transactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [reconciliations, setReconciliations] = useState<Reconciliation[]>([]);
+  const [helocSettings, setHelocSettings] = useState<HelocSettings | null>(null);
+  const [overallSpendable, setOverallSpendable] = useState<SpendableBalance | null>(null);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -99,12 +105,18 @@ export default function Transactions() {
 
   async function load() {
     setLoading(true);
-    const [txs, accts] = await Promise.all([
+    const [txs, accts, recons, heloc, spendable] = await Promise.all([
       window.electronAPI.transactions.getAll(),
       window.electronAPI.accounts.getAll(),
+      window.electronAPI.reconciliations.getAll(),
+      window.electronAPI.helocSettings.get(),
+      window.electronAPI.balance.getSpendable(),
     ]);
     setTransactions(txs);
     setAccounts(accts);
+    setReconciliations(recons);
+    setHelocSettings(heloc);
+    setOverallSpendable(spendable);
     setLoading(false);
 
     if (currentMonth === null) {
@@ -157,6 +169,14 @@ export default function Transactions() {
     if (!id) return '—';
     return accounts.find((a) => a.id === id)?.friendlyName ?? '—';
   };
+
+  function renderReconciledCell(tx: Transaction) {
+    const through = reconciledThrough(tx.date, reconciliations);
+    if (!through) {
+      return <span className="pill pill-unreconciled">Not yet</span>;
+    }
+    return formatDate(through);
+  }
 
   function matchesFilters(tx: Transaction): boolean {
     if (filters.description && !tx.description.toLowerCase().includes(filters.description.toLowerCase())) {
@@ -256,6 +276,16 @@ export default function Transactions() {
 
   const hasAnchor = Boolean(bom?.anchor);
 
+  const thisCalendarMonthKey = monthKey(todayIso());
+  const netThisCalendarMonth = transactions
+    .filter((tx) => monthKey(tx.date) === thisCalendarMonthKey)
+    .reduce((sum, tx) => sum + tx.amount, 0);
+  const netAllTime = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+  const currentBalanceOwed =
+    helocSettings?.originalAmount != null && overallSpendable?.anchor
+      ? helocSettings.originalAmount - overallSpendable.balance
+      : null;
+
   function renderMemoInput(tx: Transaction) {
     return (
       <input
@@ -270,8 +300,57 @@ export default function Transactions() {
 
   return (
     <div>
+      {!loading && (
+        <>
+          <div className="card marquee">
+            <div className="label">HELOC Spendable Balance</div>
+            <div className="value">{overallSpendable ? formatCurrency(overallSpendable.balance) : '—'}</div>
+            {overallSpendable?.anchor ? (
+              <div className="sub">
+                Starting from {formatCurrency(overallSpendable.anchor.balance)} on{' '}
+                {formatDate(overallSpendable.anchor.asOfDate)} · {formatCurrency(overallSpendable.netSinceAnchor)} net
+                since
+              </div>
+            ) : (
+              <div className="sub">
+                No starting balance set yet. <Link to="/settings">Set one in Settings</Link>.
+              </div>
+            )}
+          </div>
+
+          <div className="stat-row" style={{ marginTop: 20, marginBottom: 20 }}>
+            <div className="card">
+              <div className="stat-label">Net Flow — {monthLabel(thisCalendarMonthKey)}</div>
+              <div className={`stat-value ${netThisCalendarMonth >= 0 ? 'amount-positive' : 'amount-negative'}`}>
+                {formatCurrency(netThisCalendarMonth)}
+              </div>
+            </div>
+            <div className="card">
+              <div className="stat-label">Tracked Transactions</div>
+              <div className="stat-value">{transactions.length}</div>
+            </div>
+            <div className="card">
+              <div className="stat-label">Accounts</div>
+              <div className="stat-value">{accounts.length}</div>
+            </div>
+            <div className="card">
+              <div className="stat-label">All-Time Net Cash Flow</div>
+              <div className={`stat-value ${netAllTime >= 0 ? 'amount-positive' : 'amount-negative'}`}>
+                {formatCurrency(netAllTime)}
+              </div>
+            </div>
+            {currentBalanceOwed != null && (
+              <div className="card">
+                <div className="stat-label">Current Balance Owed</div>
+                <div className="stat-value">{formatCurrency(currentBalanceOwed)}</div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
       <div className="page-header">
-        <h1>Transactions</h1>
+        <div />
         <button
           className="btn btn-primary"
           onClick={() => {
@@ -410,6 +489,7 @@ export default function Transactions() {
                     <th>Memo</th>
                     <th style={{ textAlign: 'right' }}>Amount</th>
                     <th style={{ textAlign: 'right' }}>Balance</th>
+                    <th>Reconciled</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -418,11 +498,12 @@ export default function Transactions() {
                     <td colSpan={5}>Beginning of month</td>
                     <td style={{ textAlign: 'right' }}>{bom && formatCurrency(bom.balance)}</td>
                     <td></td>
+                    <td></td>
                   </tr>
 
                   {ledgerRows.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="empty-state">
+                      <td colSpan={8} className="empty-state">
                         No transactions this month.
                       </td>
                     </tr>
@@ -440,6 +521,7 @@ export default function Transactions() {
                           {formatCurrency(tx.amount)}
                         </td>
                         <td style={{ textAlign: 'right' }}>{formatCurrency(balance)}</td>
+                        <td>{renderReconciledCell(tx)}</td>
                         <td className="ledger-actions">
                           <button
                             className="btn-link"
@@ -461,6 +543,7 @@ export default function Transactions() {
                   <tr className="ledger-marker">
                     <td colSpan={5}>End of month</td>
                     <td style={{ textAlign: 'right' }}>{eom && formatCurrency(eom.balance)}</td>
+                    <td></td>
                     <td></td>
                   </tr>
                 </tbody>
@@ -494,13 +577,14 @@ export default function Transactions() {
                 <th className="sortable-th" style={{ textAlign: 'right' }} onClick={() => toggleSort('amount')}>
                   Amount{sortIndicator('amount')}
                 </th>
+                <th>Reconciled</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {pagedTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="empty-state">
+                  <td colSpan={7} className="empty-state">
                     {transactions.length === 0 ? 'No transactions yet.' : 'No transactions match the current filters.'}
                   </td>
                 </tr>
@@ -517,6 +601,7 @@ export default function Transactions() {
                     >
                       {formatCurrency(tx.amount)}
                     </td>
+                    <td>{renderReconciledCell(tx)}</td>
                     <td className="ledger-actions">
                       <button
                         className="btn-link"

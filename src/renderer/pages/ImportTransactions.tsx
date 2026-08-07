@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ParsedImportRow, parseStatementCSV } from '../utils/csvParser';
-import { CreateTransactionInput } from '../../shared/types/transaction';
+import { AmountDateCollision, ParsedImportRow, findSameDayAmountCollisions, parseStatementCSV } from '../utils/csvParser';
+import { CreateTransactionInput, Transaction } from '../../shared/types/transaction';
 import { formatCurrency, formatDate } from '../utils/format';
 import Rules from './Rules';
 
@@ -16,6 +16,8 @@ export default function ImportTransactions() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [preview, setPreview] = useState<ParsedImportRow[] | null>(null);
   const [overrides, setOverrides] = useState<RowOverride[]>([]);
+  const [existingTransactions, setExistingTransactions] = useState<Transaction[]>([]);
+  const [pendingCollisions, setPendingCollisions] = useState<AmountDateCollision[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ imported: number; skipped: number } | null>(null);
@@ -29,15 +31,17 @@ export default function ImportTransactions() {
 
     try {
       const text = await file.text();
-      const [rules, accounts, existingTransactions] = await Promise.all([
+      const [rules, accounts, existing] = await Promise.all([
         window.electronAPI.importRules.getAll(),
         window.electronAPI.accounts.getAll(),
         window.electronAPI.transactions.getAll(),
       ]);
 
-      const rows = parseStatementCSV(text, rules, accounts, existingTransactions);
+      const rows = parseStatementCSV(text, rules, accounts, existing);
       setPreview(rows);
       setOverrides(rows.map((r) => ({ include: r.include, friendlyName: r.suggestedFriendlyName })));
+      setExistingTransactions(existing);
+      setPendingCollisions(null);
       setFileName(file.name);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -47,6 +51,7 @@ export default function ImportTransactions() {
 
   function updateOverride(idx: number, patch: Partial<RowOverride>) {
     setOverrides((prev) => prev.map((o, i) => (i === idx ? { ...o, ...patch } : o)));
+    setPendingCollisions(null);
   }
 
   function statusFor(row: ParsedImportRow): { label: string; pillClass: string } {
@@ -59,7 +64,28 @@ export default function ImportTransactions() {
     return { label: row.matchedAccount ? `Matched: ${row.matchedAccount.friendlyName}` : 'New account', pillClass: 'pill-included' };
   }
 
-  async function handleImport() {
+  function handleImport() {
+    if (!preview || !fileName) return;
+
+    // Rows the same-day/same-amount check should look at -- whatever would actually get
+    // imported, i.e. not rule-skipped and still checked "include" by the user.
+    const includedIndexes = preview
+      .map((_row, idx) => idx)
+      .filter((idx) => !preview[idx].matchedRule && overrides[idx]?.include);
+    const collisions = findSameDayAmountCollisions(
+      includedIndexes.map((idx) => preview[idx]),
+      existingTransactions
+    );
+
+    if (collisions.length > 0 && !pendingCollisions) {
+      setPendingCollisions(collisions);
+      return;
+    }
+
+    void commitImport();
+  }
+
+  async function commitImport() {
     if (!preview || !fileName) return;
     setImporting(true);
     setError(null);
@@ -115,6 +141,8 @@ export default function ImportTransactions() {
       setResult({ imported: importedCount, skipped: skippedCount });
       setPreview(null);
       setOverrides([]);
+      setExistingTransactions([]);
+      setPendingCollisions(null);
       setFileName(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
@@ -174,8 +202,37 @@ export default function ImportTransactions() {
         <div className="card" style={{ marginTop: 16 }}>
           Imported {result.imported} transaction{result.imported === 1 ? '' : 's'} ({result.skipped} skipped).{' '}
           <button className="btn btn-primary" onClick={() => navigate('/')}>
-            View Dashboard
+            View Transactions
           </button>
+        </div>
+      )}
+
+      {preview && pendingCollisions && pendingCollisions.length > 0 && (
+        <div className="card" style={{ marginTop: 16, borderColor: 'var(--color-accent-red)' }}>
+          <h2 style={{ fontSize: 15, marginTop: 0, color: 'var(--color-accent-red)' }}>
+            Possible duplicate{pendingCollisions.length === 1 ? '' : 's'} found
+          </h2>
+          <p className="text-muted" style={{ fontSize: 13 }}>
+            The same amount shows up more than once on the same day (even across different accounts) — this can be a
+            real duplicate that got mis-tagged. Review below, then confirm these are genuinely separate transactions
+            to proceed.
+          </p>
+          <ul style={{ margin: '0 0 12px', paddingLeft: 20, fontSize: 13 }}>
+            {pendingCollisions.map((c, i) => (
+              <li key={i}>
+                {formatCurrency(c.amount)} on {formatDate(c.date)} — {c.rows.length} row{c.rows.length === 1 ? '' : 's'}{' '}
+                in this import
+              </li>
+            ))}
+          </ul>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn" onClick={() => setPendingCollisions(null)}>
+              Cancel
+            </button>
+            <button className="btn btn-primary" disabled={importing} onClick={() => void commitImport()}>
+              {importing ? 'Importing…' : 'Confirm — Not Duplicates, Import Anyway'}
+            </button>
+          </div>
         </div>
       )}
 
@@ -186,7 +243,11 @@ export default function ImportTransactions() {
               <h1 style={{ fontSize: 16 }}>
                 Preview — {preview.length} row{preview.length === 1 ? '' : 's'}
               </h1>
-              <button className="btn btn-primary" disabled={importing} onClick={handleImport}>
+              <button
+                className="btn btn-primary"
+                disabled={importing || Boolean(pendingCollisions && pendingCollisions.length > 0)}
+                onClick={handleImport}
+              >
                 {importing ? 'Importing…' : `Import ${importableCount} Transactions`}
               </button>
             </div>

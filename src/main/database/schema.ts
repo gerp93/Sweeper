@@ -135,10 +135,23 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS reconciliations (
+      id TEXT PRIMARY KEY,
+      as_of_date TEXT NOT NULL,
+      bank_balance REAL NOT NULL,
+      computed_balance REAL NOT NULL,
+      difference REAL NOT NULL,
+      note TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_description ON transactions(description)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_balance_anchors_date ON balance_anchors(as_of_date)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_reconciliations_date ON reconciliations(as_of_date)`);
 
   saveDatabase(db, dbPath);
 
