@@ -44,7 +44,8 @@ export default function ReconciliationPage() {
   const parsedBankBalance = parseFloat(bankBalance);
   const bankBalanceValid = bankBalance.trim() !== '' && !isNaN(parsedBankBalance);
   const canSave = bankBalanceValid && !isFutureDate && !saving;
-  const liveDifference = computed && bankBalanceValid ? parsedBankBalance - computed.balance : null;
+  const liveDifference =
+    computed && bankBalanceValid ? Math.round((parsedBankBalance - computed.balance) * 100) / 100 : null;
 
   async function handleSave() {
     if (!canSave) return;

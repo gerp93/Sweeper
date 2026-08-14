@@ -1,5 +1,8 @@
 export function formatCurrency(amount: number): string {
-  return amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  // Rounding error (e.g. a reconciliation difference that's really 0) can land on -0,
+  // which toLocaleString happily renders as "-$0.00" -- normalize it away first.
+  const normalized = amount === 0 ? 0 : amount;
+  return normalized.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
 
 export function formatDate(isoDate: string): string {
