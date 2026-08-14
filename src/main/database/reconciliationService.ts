@@ -54,7 +54,10 @@ export class ReconciliationService {
     }
 
     const computedBalance = this.balanceService.getSpendableBalance(input.asOfDate).balance;
-    const difference = input.bankBalance - computedBalance;
+    // Summing many float amounts can drift by a fraction of a cent even when the two
+    // balances genuinely agree to the penny -- round to cents so an exact match reads as
+    // exactly 0 instead of some near-zero value that's technically nonzero.
+    const difference = Math.round((input.bankBalance - computedBalance) * 100) / 100;
 
     const id = uuidv4();
     const now = new Date().toISOString();
