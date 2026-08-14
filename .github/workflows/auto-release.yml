@@ -12,6 +12,14 @@ on:
 permissions:
   contents: write
 
+# Serialize with cut-release.yml too (same group) -- overlapping release runs
+# race to publish, and GitHub's "latest" release pointer follows whichever
+# run finishes publishing last, not whichever has the higher version. Queue
+# instead of canceling so an in-flight publish is never left half-done.
+concurrency:
+  group: sweeper-release
+  cancel-in-progress: false
+
 jobs:
   version:
     runs-on: ubuntu-latest
