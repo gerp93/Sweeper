@@ -235,6 +235,11 @@ table {
   color: #4b5563;
 }
 
+.pill-collision {
+  background: #fecdd3;
+  color: #9f1239;
+}
+
 .marquee {
   text-align: center;
   padding: 40px 20px;
