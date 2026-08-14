@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AmountDateCollision, ParsedImportRow, findSameDayAmountCollisions, parseStatementCSV } from '../utils/csvParser';
 import { CreateTransactionInput, Transaction } from '../../shared/types/transaction';
@@ -64,21 +64,32 @@ export default function ImportTransactions() {
     return { label: row.matchedAccount ? `Matched: ${row.matchedAccount.friendlyName}` : 'New account', pillClass: 'pill-included' };
   }
 
+  // Rows the same-day/same-amount check should look at -- whatever would actually get
+  // imported, i.e. not rule-skipped and still checked "include" by the user.
+  const includedIndexes = useMemo(() => {
+    if (!preview) return [];
+    return preview.map((_row, idx) => idx).filter((idx) => !preview[idx].matchedRule && overrides[idx]?.include);
+  }, [preview, overrides]);
+
+  const currentCollisions = useMemo(
+    () => (preview ? findSameDayAmountCollisions(includedIndexes.map((idx) => preview[idx]), existingTransactions) : []),
+    [preview, includedIndexes, existingTransactions]
+  );
+
+  // Surface collisions in the preview table itself, not just as a gate at Import time --
+  // c.rows holds positions into includedIndexes (the filtered subset), so map back through
+  // it to get the actual preview row index each collision applies to.
+  const collisionRowIndexes = useMemo(() => {
+    const set = new Set<number>();
+    currentCollisions.forEach((c) => c.rows.forEach((localIdx) => set.add(includedIndexes[localIdx])));
+    return set;
+  }, [currentCollisions, includedIndexes]);
+
   function handleImport() {
     if (!preview || !fileName) return;
 
-    // Rows the same-day/same-amount check should look at -- whatever would actually get
-    // imported, i.e. not rule-skipped and still checked "include" by the user.
-    const includedIndexes = preview
-      .map((_row, idx) => idx)
-      .filter((idx) => !preview[idx].matchedRule && overrides[idx]?.include);
-    const collisions = findSameDayAmountCollisions(
-      includedIndexes.map((idx) => preview[idx]),
-      existingTransactions
-    );
-
-    if (collisions.length > 0 && !pendingCollisions) {
-      setPendingCollisions(collisions);
+    if (currentCollisions.length > 0 && !pendingCollisions) {
+      setPendingCollisions(currentCollisions);
       return;
     }
 
@@ -268,6 +279,7 @@ export default function ImportTransactions() {
                 const status = statusFor(row);
                 const override = overrides[idx];
                 const skippedByRule = Boolean(row.matchedRule);
+                const hasCollision = collisionRowIndexes.has(idx);
                 return (
                   <tr key={idx} style={skippedByRule ? { opacity: 0.5 } : undefined}>
                     <td>
@@ -305,6 +317,11 @@ export default function ImportTransactions() {
                     </td>
                     <td>
                       <span className={`pill ${status.pillClass}`}>{status.label}</span>
+                      {hasCollision && (
+                        <span className="pill pill-collision" style={{ marginLeft: 6 }}>
+                          Same-day/amount match
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );
