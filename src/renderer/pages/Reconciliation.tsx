@@ -119,7 +119,11 @@ export default function ReconciliationPage() {
           </div>
           <div className="card">
             <div className="stat-label">Difference</div>
-            <div className={`stat-value ${liveDifference != null && liveDifference !== 0 ? 'amount-negative' : ''}`}>
+            <div
+              className={`stat-value ${
+                liveDifference != null && Math.round(liveDifference * 100) !== 0 ? 'amount-negative' : ''
+              }`}
+            >
               {liveDifference != null ? formatCurrency(liveDifference) : '—'}
             </div>
           </div>
@@ -165,7 +169,10 @@ export default function ReconciliationPage() {
                   <td>{formatDate(r.asOfDate)}</td>
                   <td style={{ textAlign: 'right' }}>{formatCurrency(r.bankBalance)}</td>
                   <td style={{ textAlign: 'right' }}>{formatCurrency(r.computedBalance)}</td>
-                  <td style={{ textAlign: 'right' }} className={r.difference !== 0 ? 'amount-negative' : undefined}>
+                  <td
+                    style={{ textAlign: 'right' }}
+                    className={Math.round(r.difference * 100) !== 0 ? 'amount-negative' : undefined}
+                  >
                     {formatCurrency(r.difference)}
                   </td>
                   <td>{r.note ?? '—'}</td>

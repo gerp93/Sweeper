@@ -1,7 +1,8 @@
 export function formatCurrency(amount: number): string {
-  // Rounding error (e.g. a reconciliation difference that's really 0) can land on -0,
-  // which toLocaleString happily renders as "-$0.00" -- normalize it away first.
-  const normalized = amount === 0 ? 0 : amount;
+  // Rounding/float error (e.g. a reconciliation difference that's really 0) can land on -0
+  // or some tiny near-zero value like -0.0000000001, both of which toLocaleString happily
+  // renders as "-$0.00" -- treat anything that rounds to zero cents as positive zero.
+  const normalized = Math.round(amount * 100) === 0 ? 0 : amount;
   return normalized.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
 
