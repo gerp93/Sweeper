@@ -6,6 +6,7 @@ import { CreateImportBatchInput } from '../shared/types/importBatch';
 import { CreateBalanceAnchorInput } from '../shared/types/balanceAnchor';
 import { UpdateHelocSettingsInput } from '../shared/types/helocSettings';
 import { CreateReconciliationInput } from '../shared/types/reconciliation';
+import { CreateReserveInput, UpdateReserveInput } from '../shared/types/reserve';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   accounts: {
@@ -65,6 +66,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAll: () => ipcRenderer.invoke('reconciliations:getAll'),
     create: (input: CreateReconciliationInput) => ipcRenderer.invoke('reconciliations:create', input),
     delete: (id: string) => ipcRenderer.invoke('reconciliations:delete', id),
+  },
+
+  reserves: {
+    getAll: () => ipcRenderer.invoke('reserves:getAll'),
+    getTotal: () => ipcRenderer.invoke('reserves:getTotal'),
+    create: (input: CreateReserveInput) => ipcRenderer.invoke('reserves:create', input),
+    update: (id: string, input: UpdateReserveInput) => ipcRenderer.invoke('reserves:update', id, input),
+    delete: (id: string) => ipcRenderer.invoke('reserves:delete', id),
   },
 
   dbLocation: {

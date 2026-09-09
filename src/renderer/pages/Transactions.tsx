@@ -61,6 +61,7 @@ export default function Transactions() {
   const [reconciliations, setReconciliations] = useState<Reconciliation[]>([]);
   const [helocSettings, setHelocSettings] = useState<HelocSettings | null>(null);
   const [overallSpendable, setOverallSpendable] = useState<SpendableBalance | null>(null);
+  const [totalReserved, setTotalReserved] = useState(0);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -105,18 +106,20 @@ export default function Transactions() {
 
   async function load() {
     setLoading(true);
-    const [txs, accts, recons, heloc, spendable] = await Promise.all([
+    const [txs, accts, recons, heloc, spendable, reserved] = await Promise.all([
       window.electronAPI.transactions.getAll(),
       window.electronAPI.accounts.getAll(),
       window.electronAPI.reconciliations.getAll(),
       window.electronAPI.helocSettings.get(),
       window.electronAPI.balance.getSpendable(),
+      window.electronAPI.reserves.getTotal(),
     ]);
     setTransactions(txs);
     setAccounts(accts);
     setReconciliations(recons);
     setHelocSettings(heloc);
     setOverallSpendable(spendable);
+    setTotalReserved(reserved);
     setLoading(false);
 
     if (currentMonth === null) {
@@ -314,6 +317,13 @@ export default function Transactions() {
             ) : (
               <div className="sub">
                 No starting balance set yet. <Link to="/settings">Set one in Settings</Link>.
+              </div>
+            )}
+            {totalReserved > 0 && overallSpendable && (
+              <div className="sub">
+                {formatCurrency(totalReserved)} reserved ·{' '}
+                {formatCurrency(overallSpendable.balance - totalReserved)} truly available ·{' '}
+                <Link to="/reserves">View reserves</Link>
               </div>
             )}
           </div>
