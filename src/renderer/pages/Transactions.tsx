@@ -5,6 +5,7 @@ import { Account } from '../../shared/types/account';
 import { SpendableBalance } from '../../shared/types/balanceAnchor';
 import { Reconciliation } from '../../shared/types/reconciliation';
 import { HelocSettings } from '../../shared/types/helocSettings';
+import { Reserve } from '../../shared/types/reserve';
 import TransactionForm from '../components/TransactionForm';
 import MonthNavSidebar from '../components/MonthNavSidebar';
 import { useSetRightSidebar } from '../context/RightSidebarContext';
@@ -61,7 +62,7 @@ export default function Transactions() {
   const [reconciliations, setReconciliations] = useState<Reconciliation[]>([]);
   const [helocSettings, setHelocSettings] = useState<HelocSettings | null>(null);
   const [overallSpendable, setOverallSpendable] = useState<SpendableBalance | null>(null);
-  const [totalReserved, setTotalReserved] = useState(0);
+  const [reserves, setReserves] = useState<Reserve[]>([]);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -106,20 +107,20 @@ export default function Transactions() {
 
   async function load() {
     setLoading(true);
-    const [txs, accts, recons, heloc, spendable, reserved] = await Promise.all([
+    const [txs, accts, recons, heloc, spendable, reserveList] = await Promise.all([
       window.electronAPI.transactions.getAll(),
       window.electronAPI.accounts.getAll(),
       window.electronAPI.reconciliations.getAll(),
       window.electronAPI.helocSettings.get(),
       window.electronAPI.balance.getSpendable(),
-      window.electronAPI.reserves.getTotal(),
+      window.electronAPI.reserves.getAll(),
     ]);
     setTransactions(txs);
     setAccounts(accts);
     setReconciliations(recons);
     setHelocSettings(heloc);
     setOverallSpendable(spendable);
-    setTotalReserved(reserved);
+    setReserves(reserveList);
     setLoading(false);
 
     if (currentMonth === null) {
@@ -284,6 +285,7 @@ export default function Transactions() {
     .filter((tx) => monthKey(tx.date) === thisCalendarMonthKey)
     .reduce((sum, tx) => sum + tx.amount, 0);
   const netAllTime = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+  const totalReserved = reserves.reduce((sum, r) => sum + r.remaining, 0);
   const currentBalanceOwed =
     helocSettings?.originalAmount != null && overallSpendable?.anchor
       ? helocSettings.originalAmount - overallSpendable.balance
@@ -320,10 +322,14 @@ export default function Transactions() {
               </div>
             )}
             {totalReserved > 0 && overallSpendable && (
-              <div className="sub">
-                {formatCurrency(totalReserved)} reserved ·{' '}
-                {formatCurrency(overallSpendable.balance - totalReserved)} truly available ·{' '}
-                <Link to="/reserves">View reserves</Link>
+              <div className="marquee-secondary">
+                <div className="label">Truly Available</div>
+                <div className="secondary-value">
+                  {formatCurrency(overallSpendable.balance - totalReserved)}
+                </div>
+                <div className="sub">
+                  {formatCurrency(totalReserved)} reserved · <Link to="/reserves">View reserves</Link>
+                </div>
               </div>
             )}
           </div>
@@ -670,6 +676,7 @@ export default function Transactions() {
         <TransactionForm
           transaction={editing ?? undefined}
           accounts={accounts}
+          reserves={reserves}
           defaultDate={editing ? undefined : newTransactionDate}
           onSave={handleSave}
           onCancel={() => {

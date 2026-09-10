@@ -58,6 +58,34 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
   `);
 
   db.run(`
+    CREATE TABLE IF NOT EXISTS heloc_reserves (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      amount REAL NOT NULL,
+      target_date TEXT,
+      note TEXT,
+      account_id TEXT,
+      auto_allocate INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE SET NULL
+    )
+  `);
+
+  // Migration: account-linked auto-allocation was added after heloc_reserves already
+  // shipped -- add the columns to databases created before this change.
+  try {
+    db.run(`ALTER TABLE heloc_reserves ADD COLUMN account_id TEXT`);
+  } catch (e) {
+    // already exists
+  }
+  try {
+    db.run(`ALTER TABLE heloc_reserves ADD COLUMN auto_allocate INTEGER NOT NULL DEFAULT 0`);
+  } catch (e) {
+    // already exists
+  }
+
+  db.run(`
     CREATE TABLE IF NOT EXISTS transactions (
       id TEXT PRIMARY KEY,
       account_id TEXT,
@@ -68,12 +96,22 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
       memo TEXT,
       category TEXT,
       import_batch_id TEXT,
+      reserve_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE SET NULL,
-      FOREIGN KEY (import_batch_id) REFERENCES import_batches(id) ON DELETE SET NULL
+      FOREIGN KEY (import_batch_id) REFERENCES import_batches(id) ON DELETE SET NULL,
+      FOREIGN KEY (reserve_id) REFERENCES heloc_reserves(id) ON DELETE SET NULL
     )
   `);
+
+  // Migration: reserve allocation was added after transactions already shipped -- add the
+  // column to databases created before this change.
+  try {
+    db.run(`ALTER TABLE transactions ADD COLUMN reserve_id TEXT`);
+  } catch (e) {
+    // already exists
+  }
 
   // Migration: the "hidden/excluded transaction" concept was removed -- rule-matched
   // and skipped rows are no longer stored at all, just left out at import time.
@@ -136,18 +174,6 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
   `);
 
   db.run(`
-    CREATE TABLE IF NOT EXISTS heloc_reserves (
-      id TEXT PRIMARY KEY,
-      label TEXT NOT NULL,
-      amount REAL NOT NULL,
-      target_date TEXT,
-      note TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `);
-
-  db.run(`
     CREATE TABLE IF NOT EXISTS reconciliations (
       id TEXT PRIMARY KEY,
       as_of_date TEXT NOT NULL,
@@ -161,6 +187,7 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
 
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_reserve ON transactions(reserve_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_description ON transactions(description)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_balance_anchors_date ON balance_anchors(as_of_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_reconciliations_date ON reconciliations(as_of_date)`);
