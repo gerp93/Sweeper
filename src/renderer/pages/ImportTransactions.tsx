@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AmountDateCollision, ParsedImportRow, findSameDayAmountCollisions, parseStatementCSV } from '../utils/csvParser';
 import { CreateTransactionInput, Transaction } from '../../shared/types/transaction';
+import { Reserve } from '../../shared/types/reserve';
 import { formatCurrency, formatDate } from '../utils/format';
 import Rules from './Rules';
 
@@ -17,6 +18,8 @@ export default function ImportTransactions() {
   const [preview, setPreview] = useState<ParsedImportRow[] | null>(null);
   const [overrides, setOverrides] = useState<RowOverride[]>([]);
   const [existingTransactions, setExistingTransactions] = useState<Transaction[]>([]);
+  const [reserves, setReserves] = useState<Reserve[]>([]);
+  const [autoAllocateReserves, setAutoAllocateReserves] = useState(true);
   const [pendingCollisions, setPendingCollisions] = useState<AmountDateCollision[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -31,16 +34,18 @@ export default function ImportTransactions() {
 
     try {
       const text = await file.text();
-      const [rules, accounts, existing] = await Promise.all([
+      const [rules, accounts, existing, reserveList] = await Promise.all([
         window.electronAPI.importRules.getAll(),
         window.electronAPI.accounts.getAll(),
         window.electronAPI.transactions.getAll(),
+        window.electronAPI.reserves.getAll(),
       ]);
 
       const rows = parseStatementCSV(text, rules, accounts, existing);
       setPreview(rows);
       setOverrides(rows.map((r) => ({ include: r.include, friendlyName: r.suggestedFriendlyName })));
       setExistingTransactions(existing);
+      setReserves(reserveList);
       setPendingCollisions(null);
       setFileName(file.name);
     } catch (err) {
@@ -128,6 +133,11 @@ export default function ImportTransactions() {
           accountId = account.id;
         }
 
+        const autoReserve =
+          autoAllocateReserves && accountId
+            ? reserves.find((r) => r.accountId === accountId && r.autoAllocate)
+            : undefined;
+
         inputs.push({
           accountId,
           date: row.date,
@@ -136,6 +146,7 @@ export default function ImportTransactions() {
           amount: row.amount,
           memo: row.memo,
           category: row.category,
+          reserveId: autoReserve?.id ?? null,
         });
         importedCount++;
       }
@@ -153,6 +164,7 @@ export default function ImportTransactions() {
       setPreview(null);
       setOverrides([]);
       setExistingTransactions([]);
+      setReserves([]);
       setPendingCollisions(null);
       setFileName(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -262,6 +274,16 @@ export default function ImportTransactions() {
                 {importing ? 'Importing…' : `Import ${importableCount} Transactions`}
               </button>
             </div>
+            {reserves.some((r) => r.accountId && r.autoAllocate) && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={autoAllocateReserves}
+                  onChange={(e) => setAutoAllocateReserves(e.target.checked)}
+                />
+                Auto-allocate these transactions to their linked reserves
+              </label>
+            )}
           </div>
           <table className="data-table">
             <thead>
@@ -322,6 +344,13 @@ export default function ImportTransactions() {
                           Same-day/amount match
                         </span>
                       )}
+                      {autoAllocateReserves &&
+                        row.matchedAccount &&
+                        reserves.some((r) => r.accountId === row.matchedAccount!.id && r.autoAllocate) && (
+                          <span className="pill pill-included" style={{ marginLeft: 6 }}>
+                            → reserve
+                          </span>
+                        )}
                     </td>
                   </tr>
                 );

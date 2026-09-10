@@ -1,25 +1,38 @@
 import { useState } from 'react';
 import { Account } from '../../shared/types/account';
 import { CreateTransactionInput, Transaction } from '../../shared/types/transaction';
-import { todayIso } from '../utils/format';
+import { Reserve } from '../../shared/types/reserve';
+import { todayIso, formatCurrency } from '../utils/format';
 
 interface Props {
   transaction?: Transaction;
   accounts: Account[];
+  reserves: Reserve[];
   defaultDate?: string;
   onSave: (input: CreateTransactionInput) => void;
   onCancel: () => void;
 }
 
-export default function TransactionForm({ transaction, accounts, defaultDate, onSave, onCancel }: Props) {
+export default function TransactionForm({ transaction, accounts, reserves, defaultDate, onSave, onCancel }: Props) {
   const [date, setDate] = useState(transaction?.date ?? defaultDate ?? todayIso());
   const [description, setDescription] = useState(transaction?.description ?? '');
   const [accountId, setAccountId] = useState(transaction?.accountId ?? '');
   const [amount, setAmount] = useState(transaction ? String(transaction.amount) : '');
   const [memo, setMemo] = useState(transaction?.memo ?? '');
+  const [reserveId, setReserveId] = useState(transaction?.reserveId ?? '');
 
   const parsedAmount = parseFloat(amount);
   const isValid = date.trim() !== '' && description.trim() !== '' && amount.trim() !== '' && !isNaN(parsedAmount);
+
+  function handleAccountChange(newAccountId: string) {
+    setAccountId(newAccountId);
+    // Adding a new transaction (not editing one) on an account that has an auto-allocate
+    // reserve linked to it -- suggest that reserve, but leave it fully overridable below.
+    if (!transaction && !reserveId) {
+      const match = reserves.find((r) => r.accountId === newAccountId && r.autoAllocate);
+      if (match) setReserveId(match.id);
+    }
+  }
 
   return (
     <div className="modal-backdrop" onClick={onCancel}>
@@ -47,11 +60,22 @@ export default function TransactionForm({ transaction, accounts, defaultDate, on
         </div>
         <div className="field">
           <label>Account</label>
-          <select value={accountId ?? ''} onChange={(e) => setAccountId(e.target.value)}>
+          <select value={accountId ?? ''} onChange={(e) => handleAccountChange(e.target.value)}>
             <option value="">(none)</option>
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.friendlyName}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label>Allocate to Reserve (optional)</label>
+          <select value={reserveId ?? ''} onChange={(e) => setReserveId(e.target.value)}>
+            <option value="">(none)</option>
+            {reserves.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.label} — {formatCurrency(r.remaining)} remaining
               </option>
             ))}
           </select>
@@ -74,6 +98,7 @@ export default function TransactionForm({ transaction, accounts, defaultDate, on
                 accountId: accountId || null,
                 amount: parsedAmount,
                 memo: memo.trim() || null,
+                reserveId: reserveId || null,
               })
             }
           >

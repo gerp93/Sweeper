@@ -4,6 +4,10 @@ export interface Reserve {
   amount: number;
   targetDate: string | null;
   note: string | null;
+  accountId: string | null;
+  autoAllocate: boolean;
+  allocated: number;
+  remaining: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -13,6 +17,8 @@ export interface CreateReserveInput {
   amount: number;
   targetDate?: string | null;
   note?: string | null;
+  accountId?: string | null;
+  autoAllocate?: boolean;
 }
 
 export interface UpdateReserveInput {
@@ -20,4 +26,6 @@ export interface UpdateReserveInput {
   amount?: number;
   targetDate?: string | null;
   note?: string | null;
+  accountId?: string | null;
+  autoAllocate?: boolean;
 }

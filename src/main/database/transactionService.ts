@@ -18,6 +18,7 @@ function rowToTransaction(columns: string[], row: any[]): Transaction {
     memo: obj.memo,
     category: obj.category,
     importBatchId: obj.importBatchId,
+    reserveId: obj.reserveId,
     createdAt: obj.createdAt,
     updatedAt: obj.updatedAt,
   };
@@ -33,6 +34,7 @@ const SELECT_COLUMNS = `
   memo,
   category,
   import_batch_id as importBatchId,
+  reserve_id as reserveId,
   created_at as createdAt,
   updated_at as updatedAt
 `;
@@ -71,8 +73,8 @@ export class TransactionService {
 
     this.db.run(
       `INSERT INTO transactions (
-        id, account_id, date, description, ref_check, amount, memo, category, import_batch_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, account_id, date, description, ref_check, amount, memo, category, import_batch_id, reserve_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.accountId,
@@ -83,6 +85,7 @@ export class TransactionService {
         input.memo ?? null,
         input.category ?? null,
         input.importBatchId ?? null,
+        input.reserveId ?? null,
         now,
         now,
       ]
@@ -100,8 +103,8 @@ export class TransactionService {
       const now = new Date().toISOString();
       this.db.run(
         `INSERT INTO transactions (
-          id, account_id, date, description, ref_check, amount, memo, category, import_batch_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          id, account_id, date, description, ref_check, amount, memo, category, import_batch_id, reserve_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           input.accountId,
@@ -112,6 +115,7 @@ export class TransactionService {
           input.memo ?? null,
           input.category ?? null,
           input.importBatchId ?? null,
+          input.reserveId ?? null,
           now,
           now,
         ]
@@ -160,6 +164,10 @@ export class TransactionService {
     if (input.category !== undefined) {
       updates.push('category = ?');
       params.push(input.category);
+    }
+    if (input.reserveId !== undefined) {
+      updates.push('reserve_id = ?');
+      params.push(input.reserveId);
     }
 
     updates.push('updated_at = ?');

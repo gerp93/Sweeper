@@ -8,6 +8,7 @@ export interface Transaction {
   memo: string | null;
   category: string | null;
   importBatchId: string | null;
+  reserveId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -21,6 +22,7 @@ export interface CreateTransactionInput {
   memo?: string | null;
   category?: string | null;
   importBatchId?: string | null;
+  reserveId?: string | null;
 }
 
 export interface UpdateTransactionInput {
@@ -31,4 +33,5 @@ export interface UpdateTransactionInput {
   amount?: number;
   memo?: string | null;
   category?: string | null;
+  reserveId?: string | null;
 }

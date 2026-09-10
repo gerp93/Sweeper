@@ -8,25 +8,40 @@ function rowToReserve(columns: string[], row: any[]): Reserve {
   columns.forEach((col, idx) => {
     obj[col] = row[idx];
   });
+  const amount = obj.amount;
+  const allocated = Number(obj.allocated ?? 0);
   return {
     id: obj.id,
     label: obj.label,
-    amount: obj.amount,
+    amount,
     targetDate: obj.targetDate,
     note: obj.note,
+    accountId: obj.accountId,
+    autoAllocate: Boolean(obj.autoAllocate),
+    allocated,
+    remaining: amount - allocated,
     createdAt: obj.createdAt,
     updatedAt: obj.updatedAt,
   };
 }
 
-const SELECT_COLUMNS = `
-  id,
-  label,
-  amount,
-  target_date as targetDate,
-  note,
-  created_at as createdAt,
-  updated_at as updatedAt
+// Allocated = the sum of every transaction's signed amount that's been assigned to this
+// reserve (a payment towards it is a positive amount, so allocating one brings the
+// reserve's remaining need down, same as the user pays down the real HELOC balance).
+const SELECT_WITH_ALLOCATIONS = `
+  SELECT
+    r.id,
+    r.label,
+    r.amount,
+    r.target_date as targetDate,
+    r.note,
+    r.account_id as accountId,
+    r.auto_allocate as autoAllocate,
+    r.created_at as createdAt,
+    r.updated_at as updatedAt,
+    COALESCE(SUM(t.amount), 0) as allocated
+  FROM heloc_reserves r
+  LEFT JOIN transactions t ON t.reserve_id = r.id
 `;
 
 export class ReserveService {
@@ -35,15 +50,16 @@ export class ReserveService {
   getAllReserves(): Reserve[] {
     // Reserves with a target date soonest-first, undated ones (no deadline) last.
     const results = this.db.exec(`
-      SELECT ${SELECT_COLUMNS} FROM heloc_reserves
-      ORDER BY (target_date IS NULL), target_date ASC, created_at ASC
+      ${SELECT_WITH_ALLOCATIONS}
+      GROUP BY r.id
+      ORDER BY (r.target_date IS NULL), r.target_date ASC, r.created_at ASC
     `);
     if (results.length === 0) return [];
     return results[0].values.map((row) => rowToReserve(results[0].columns, row));
   }
 
   getReserveById(id: string): Reserve | null {
-    const stmt = this.db.prepare(`SELECT ${SELECT_COLUMNS} FROM heloc_reserves WHERE id = ?`);
+    const stmt = this.db.prepare(`${SELECT_WITH_ALLOCATIONS} WHERE r.id = ? GROUP BY r.id`);
     stmt.bind([id]);
     const reserve = stmt.step() ? rowToReserve(stmt.getColumnNames(), stmt.get()) : null;
     stmt.free();
@@ -51,9 +67,7 @@ export class ReserveService {
   }
 
   getTotalReserved(): number {
-    const results = this.db.exec(`SELECT COALESCE(SUM(amount), 0) as total FROM heloc_reserves`);
-    if (results.length === 0) return 0;
-    return Number(results[0].values[0][0]);
+    return this.getAllReserves().reduce((sum, r) => sum + r.remaining, 0);
   }
 
   createReserve(input: CreateReserveInput): Reserve {
@@ -61,9 +75,19 @@ export class ReserveService {
     const now = new Date().toISOString();
 
     this.db.run(
-      `INSERT INTO heloc_reserves (id, label, amount, target_date, note, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, input.label, input.amount, input.targetDate ?? null, input.note ?? null, now, now]
+      `INSERT INTO heloc_reserves (id, label, amount, target_date, note, account_id, auto_allocate, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        input.label,
+        input.amount,
+        input.targetDate ?? null,
+        input.note ?? null,
+        input.accountId ?? null,
+        input.autoAllocate ? 1 : 0,
+        now,
+        now,
+      ]
     );
 
     saveDatabase(this.db);
@@ -90,6 +114,14 @@ export class ReserveService {
     if (input.note !== undefined) {
       updates.push('note = ?');
       params.push(input.note);
+    }
+    if (input.accountId !== undefined) {
+      updates.push('account_id = ?');
+      params.push(input.accountId);
+    }
+    if (input.autoAllocate !== undefined) {
+      updates.push('auto_allocate = ?');
+      params.push(input.autoAllocate ? 1 : 0);
     }
     updates.push('updated_at = ?');
     params.push(new Date().toISOString());
