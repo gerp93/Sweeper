@@ -265,6 +265,26 @@ table {
   font-size: 13px;
 }
 
+.marquee-secondary {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.marquee-secondary .label {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-accent-blue);
+  font-weight: 600;
+}
+
+.marquee .secondary-value {
+  font-size: 32px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
 .empty-state {
   color: var(--color-accent-blue);
   text-align: center;
