@@ -5,6 +5,7 @@ import { ImportBatch, CreateImportBatchInput } from '../shared/types/importBatch
 import { BalanceAnchor, CreateBalanceAnchorInput, SpendableBalance } from '../shared/types/balanceAnchor';
 import { HelocSettings, UpdateHelocSettingsInput } from '../shared/types/helocSettings';
 import { Reconciliation, CreateReconciliationInput } from '../shared/types/reconciliation';
+import { Reserve, CreateReserveInput, UpdateReserveInput } from '../shared/types/reserve';
 
 declare global {
   interface Window {
@@ -56,6 +57,13 @@ declare global {
       reconciliations: {
         getAll: () => Promise<Reconciliation[]>;
         create: (input: CreateReconciliationInput) => Promise<Reconciliation>;
+        delete: (id: string) => Promise<{ success: boolean }>;
+      };
+      reserves: {
+        getAll: () => Promise<Reserve[]>;
+        getTotal: () => Promise<number>;
+        create: (input: CreateReserveInput) => Promise<Reserve>;
+        update: (id: string, input: UpdateReserveInput) => Promise<Reserve>;
         delete: (id: string) => Promise<{ success: boolean }>;
       };
       dbLocation: {

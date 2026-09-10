@@ -136,6 +136,18 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
   `);
 
   db.run(`
+    CREATE TABLE IF NOT EXISTS heloc_reserves (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      amount REAL NOT NULL,
+      target_date TEXT,
+      note TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(`
     CREATE TABLE IF NOT EXISTS reconciliations (
       id TEXT PRIMARY KEY,
       as_of_date TEXT NOT NULL,
@@ -152,6 +164,7 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_description ON transactions(description)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_balance_anchors_date ON balance_anchors(as_of_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_reconciliations_date ON reconciliations(as_of_date)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_heloc_reserves_target_date ON heloc_reserves(target_date)`);
 
   saveDatabase(db, dbPath);
 
