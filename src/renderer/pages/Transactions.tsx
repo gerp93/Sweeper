@@ -320,10 +320,14 @@ export default function Transactions() {
               </div>
             )}
             {totalReserved > 0 && overallSpendable && (
-              <div className="sub">
-                {formatCurrency(totalReserved)} reserved ·{' '}
-                {formatCurrency(overallSpendable.balance - totalReserved)} truly available ·{' '}
-                <Link to="/reserves">View reserves</Link>
+              <div className="marquee-secondary">
+                <div className="label">Truly Available</div>
+                <div className="secondary-value">
+                  {formatCurrency(overallSpendable.balance - totalReserved)}
+                </div>
+                <div className="sub">
+                  {formatCurrency(totalReserved)} reserved · <Link to="/reserves">View reserves</Link>
+                </div>
               </div>
             )}
           </div>
