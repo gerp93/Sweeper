@@ -6,7 +6,12 @@ import { CreateImportBatchInput } from '../shared/types/importBatch';
 import { CreateBalanceAnchorInput } from '../shared/types/balanceAnchor';
 import { UpdateHelocSettingsInput } from '../shared/types/helocSettings';
 import { CreateReconciliationInput } from '../shared/types/reconciliation';
-import { CreateReserveInput, UpdateReserveInput } from '../shared/types/reserve';
+import {
+  CreateReserveInput,
+  UpdateReserveInput,
+  CreateReserveLineItemInput,
+  UpdateReserveLineItemInput,
+} from '../shared/types/reserve';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   accounts: {
@@ -74,6 +79,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     create: (input: CreateReserveInput) => ipcRenderer.invoke('reserves:create', input),
     update: (id: string, input: UpdateReserveInput) => ipcRenderer.invoke('reserves:update', id, input),
     delete: (id: string) => ipcRenderer.invoke('reserves:delete', id),
+  },
+
+  reserveLineItems: {
+    create: (reserveId: string, input: CreateReserveLineItemInput) =>
+      ipcRenderer.invoke('reserveLineItems:create', reserveId, input),
+    update: (id: string, input: UpdateReserveLineItemInput) =>
+      ipcRenderer.invoke('reserveLineItems:update', id, input),
+    delete: (id: string) => ipcRenderer.invoke('reserveLineItems:delete', id),
+    move: (id: string, direction: 'up' | 'down') => ipcRenderer.invoke('reserveLineItems:move', id, direction),
   },
 
   dbLocation: {
