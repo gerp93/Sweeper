@@ -1,6 +1,7 @@
 import initSqlJs, { Database } from 'sql.js';
 import * as path from 'path';
 import * as fs from 'fs';
+import { v4 as uuidv4 } from 'uuid';
 import { getEffectiveDbPath } from '../dbLocation';
 
 let dbInstance: Database | null = null;
@@ -61,8 +62,6 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
     CREATE TABLE IF NOT EXISTS heloc_reserves (
       id TEXT PRIMARY KEY,
       label TEXT NOT NULL,
-      amount REAL NOT NULL,
-      target_date TEXT,
       note TEXT,
       account_id TEXT,
       auto_allocate INTEGER NOT NULL DEFAULT 0,
@@ -83,6 +82,52 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
     db.run(`ALTER TABLE heloc_reserves ADD COLUMN auto_allocate INTEGER NOT NULL DEFAULT 0`);
   } catch (e) {
     // already exists
+  }
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS reserve_line_items (
+      id TEXT PRIMARY KEY,
+      reserve_id TEXT NOT NULL,
+      label TEXT,
+      amount REAL NOT NULL,
+      target_date TEXT,
+      priority INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (reserve_id) REFERENCES heloc_reserves(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Migration: a reserve's single amount/target_date became one-or-more line items (so a
+  // reserve can hold several distinct promo balances, e.g. same-day purchases on a store
+  // card that each carry their own payoff date). Backfill one line item per pre-existing
+  // reserve from its old columns, then drop those now-unused columns.
+  try {
+    const legacy = db.exec(`SELECT id, amount, target_date, created_at, updated_at FROM heloc_reserves`);
+    if (legacy.length > 0) {
+      const existing = db.exec(`SELECT DISTINCT reserve_id FROM reserve_line_items`);
+      const alreadyMigrated = new Set(existing.length > 0 ? existing[0].values.map((row) => row[0]) : []);
+      for (const [id, amount, targetDate, createdAt, updatedAt] of legacy[0].values) {
+        if (alreadyMigrated.has(id)) continue;
+        db.run(
+          `INSERT INTO reserve_line_items (id, reserve_id, amount, target_date, priority, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 0, ?, ?)`,
+          [uuidv4(), id, amount, targetDate, createdAt, updatedAt]
+        );
+      }
+    }
+  } catch (e) {
+    // heloc_reserves has no amount/target_date columns -- already migrated or a fresh database
+  }
+  try {
+    db.run(`ALTER TABLE heloc_reserves DROP COLUMN amount`);
+  } catch (e) {
+    // already dropped or never existed
+  }
+  try {
+    db.run(`ALTER TABLE heloc_reserves DROP COLUMN target_date`);
+  } catch (e) {
+    // already dropped or never existed
   }
 
   db.run(`
@@ -191,7 +236,8 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_description ON transactions(description)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_balance_anchors_date ON balance_anchors(as_of_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_reconciliations_date ON reconciliations(as_of_date)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_heloc_reserves_target_date ON heloc_reserves(target_date)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_reserve_line_items_reserve ON reserve_line_items(reserve_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_reserve_line_items_target_date ON reserve_line_items(target_date)`);
 
   saveDatabase(db, dbPath);
 

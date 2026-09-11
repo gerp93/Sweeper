@@ -28,7 +28,12 @@ import { CreateImportBatchInput } from '../shared/types/importBatch';
 import { CreateBalanceAnchorInput } from '../shared/types/balanceAnchor';
 import { UpdateHelocSettingsInput } from '../shared/types/helocSettings';
 import { CreateReconciliationInput } from '../shared/types/reconciliation';
-import { CreateReserveInput, UpdateReserveInput } from '../shared/types/reserve';
+import {
+  CreateReserveInput,
+  UpdateReserveInput,
+  CreateReserveLineItemInput,
+  UpdateReserveLineItemInput,
+} from '../shared/types/reserve';
 import { Database } from 'sql.js';
 
 pinUserDataPath();
@@ -320,6 +325,18 @@ function registerIPCHandlers() {
     reserveService.deleteReserve(id);
     return { success: true };
   });
+
+  // Reserve line item handlers
+  ipcMain.handle('reserveLineItems:create', (_, reserveId: string, input: CreateReserveLineItemInput) =>
+    reserveService.createLineItem(reserveId, input)
+  );
+  ipcMain.handle('reserveLineItems:update', (_, id: string, input: UpdateReserveLineItemInput) =>
+    reserveService.updateLineItem(id, input)
+  );
+  ipcMain.handle('reserveLineItems:delete', (_, id: string) => reserveService.deleteLineItem(id));
+  ipcMain.handle('reserveLineItems:move', (_, id: string, direction: 'up' | 'down') =>
+    reserveService.moveLineItem(id, direction)
+  );
 
   // Database location handlers
   ipcMain.handle('dbLocation:get', () => ({

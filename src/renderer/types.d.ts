@@ -5,7 +5,13 @@ import { ImportBatch, CreateImportBatchInput } from '../shared/types/importBatch
 import { BalanceAnchor, CreateBalanceAnchorInput, SpendableBalance } from '../shared/types/balanceAnchor';
 import { HelocSettings, UpdateHelocSettingsInput } from '../shared/types/helocSettings';
 import { Reconciliation, CreateReconciliationInput } from '../shared/types/reconciliation';
-import { Reserve, CreateReserveInput, UpdateReserveInput } from '../shared/types/reserve';
+import {
+  Reserve,
+  CreateReserveInput,
+  UpdateReserveInput,
+  CreateReserveLineItemInput,
+  UpdateReserveLineItemInput,
+} from '../shared/types/reserve';
 
 declare global {
   interface Window {
@@ -65,6 +71,12 @@ declare global {
         create: (input: CreateReserveInput) => Promise<Reserve>;
         update: (id: string, input: UpdateReserveInput) => Promise<Reserve>;
         delete: (id: string) => Promise<{ success: boolean }>;
+      };
+      reserveLineItems: {
+        create: (reserveId: string, input: CreateReserveLineItemInput) => Promise<Reserve>;
+        update: (id: string, input: UpdateReserveLineItemInput) => Promise<Reserve>;
+        delete: (id: string) => Promise<Reserve>;
+        move: (id: string, direction: 'up' | 'down') => Promise<Reserve>;
       };
       dbLocation: {
         get: () => Promise<{ path: string; isDefault: boolean; defaultPath: string }>;
