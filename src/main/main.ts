@@ -1,8 +1,11 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
+import * as fs from 'fs';
 import { initDatabase, saveDatabase } from './database/schema';
 import {
+  pinUserDataPath,
+  getConfiguredDbPath,
   getEffectiveDbPath,
   getDefaultDbPath,
   isUsingDefaultLocation,
@@ -28,10 +31,27 @@ import { CreateReconciliationInput } from '../shared/types/reconciliation';
 import { CreateReserveInput, UpdateReserveInput } from '../shared/types/reserve';
 import { Database } from 'sql.js';
 
-// Packaged builds resolve app.getPath('userData') from build.productName ("Sweeper"),
-// while `electron .` in dev resolves it from package.json's "name" ("sweeper") -- pin it
-// so both modes always read/write the same data folder instead of silently diverging.
+pinUserDataPath();
 app.setName('sweeper');
+
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+  // app.quit() has been observed leaving this process alive for hours
+  // instead of exiting (the loser of the lock never reaches 'ready', so
+  // there's no window/before-quit lifecycle to fall back on) -- force it.
+  setTimeout(() => process.exit(0), 1000);
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    } else {
+      createWindow();
+    }
+  });
+}
 
 let mainWindow: BrowserWindow | null = null;
 let db: Database | null = null;
@@ -153,6 +173,25 @@ function checkForUpdatesNow(): Promise<UpdateCheckResult> {
 }
 
 app.whenReady().then(async () => {
+  const configuredDbPath = getConfiguredDbPath();
+  if (configuredDbPath && !fs.existsSync(configuredDbPath)) {
+    const result = await dialog.showMessageBox({
+      type: 'error',
+      title: 'Database not found',
+      message: "Sweeper can't find your configured database file.",
+      detail: `Expected it at:\n${configuredDbPath}\n\nThis can happen if a drive is disconnected or a synced folder hasn't loaded yet. Reconnect it and relaunch, or switch back to the default location.`,
+      buttons: ['Quit', 'Use Default Location'],
+      defaultId: 0,
+      cancelId: 0,
+    });
+    if (result.response === 1) {
+      resetToDefaultDbPath();
+      app.relaunch();
+    }
+    app.exit();
+    return;
+  }
+
   db = await initDatabase();
   accountService = new AccountService(db);
   transactionService = new TransactionService(db);
