@@ -39,6 +39,16 @@ import { Database } from 'sql.js';
 pinUserDataPath();
 app.setName('sweeper');
 
+// Guards against a real race: if a second launch attempt's 'second-instance'
+// event lands while this process is still awaiting initDatabase() (loading
+// the sql.js WASM engine takes a moment), the handler below would see
+// mainWindow as still null and create a *second* window ahead of the real
+// startup flow -- one whose renderer calls the API before
+// registerIPCHandlers() has run, permanently stuck showing "No handler
+// registered" / default values, even though the database itself is
+// completely fine. Only act on second-instance once startup has finished.
+let appInitialized = false;
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -48,6 +58,7 @@ if (!gotLock) {
   setTimeout(() => process.exit(0), 1000);
 } else {
   app.on('second-instance', () => {
+    if (!appInitialized) return;
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
@@ -219,6 +230,7 @@ app.whenReady().then(async () => {
   registerIPCHandlers();
 
   createWindow();
+  appInitialized = true;
   setupAutoUpdater();
 
   app.on('activate', () => {
