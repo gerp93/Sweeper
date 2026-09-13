@@ -178,6 +178,12 @@ function checkForUpdatesNow(): Promise<UpdateCheckResult> {
 }
 
 app.whenReady().then(async () => {
+  // Belt-and-suspenders: this callback is registered unconditionally above,
+  // so make it explicit that the process which lost the single-instance
+  // lock must never touch the database, even if 'ready' somehow still
+  // fires for it before app.quit()/process.exit() take effect.
+  if (!gotLock) return;
+
   const configuredDbPath = getConfiguredDbPath();
   if (configuredDbPath && !fs.existsSync(configuredDbPath)) {
     const result = await dialog.showMessageBox({
