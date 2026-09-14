@@ -14,6 +14,7 @@ export default function Reserves() {
 
   // Reserve-level fields (label/note/account/auto-allocate). Amount and target date now
   // live on line items -- only the "new reserve" form collects a starter one.
+  const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [label, setLabel] = useState('');
   const [note, setNote] = useState('');
@@ -52,6 +53,19 @@ export default function Reserves() {
   }
 
   function resetForm() {
+    setModalOpen(false);
+    setEditingId(null);
+    setLabel('');
+    setNote('');
+    setAccountId('');
+    setAutoAllocate(false);
+    setFirstAmount('');
+    setFirstTargetDate('');
+    setError(null);
+  }
+
+  function startAdd() {
+    setModalOpen(true);
     setEditingId(null);
     setLabel('');
     setNote('');
@@ -63,6 +77,7 @@ export default function Reserves() {
   }
 
   function startEdit(reserve: Reserve) {
+    setModalOpen(true);
     setEditingId(reserve.id);
     setLabel(reserve.label);
     setNote(reserve.note ?? '');
@@ -200,6 +215,9 @@ export default function Reserves() {
     <div>
       <div className="page-header">
         <h1>Reserves</h1>
+        <button className="btn btn-primary" onClick={startAdd}>
+          + New Reserve
+        </button>
       </div>
 
       <p className="text-muted" style={{ marginTop: -8, fontSize: 13, maxWidth: 720 }}>
@@ -224,86 +242,6 @@ export default function Reserves() {
           <div className={`stat-value ${trulyAvailable != null && trulyAvailable < 0 ? 'amount-negative' : ''}`}>
             {trulyAvailable != null ? formatCurrency(trulyAvailable) : '—'}
           </div>
-        </div>
-      </div>
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 15, marginTop: 0 }}>{editingId ? 'Edit Reserve' : 'New Reserve'}</h2>
-
-        <div className="grid-2">
-          <div className="field">
-            <label>Label</label>
-            <input
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder="e.g. Best Buy promo balances"
-            />
-          </div>
-          <div className="field">
-            <label>Note (optional)</label>
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. store card, 0% promo" />
-          </div>
-        </div>
-
-        {!editingId && (
-          <div className="grid-2">
-            <div className="field">
-              <label>First Target Amount</label>
-              <CurrencyInput value={firstAmount} onChange={setFirstAmount} placeholder="e.g. $1,200.00" />
-            </div>
-            <div className="field">
-              <label>First Target Date (optional)</label>
-              <input type="date" value={firstTargetDate} onChange={(e) => setFirstTargetDate(e.target.value)} />
-            </div>
-          </div>
-        )}
-        {!editingId && (
-          <p className="text-muted" style={{ fontSize: 12, marginTop: -8 }}>
-            You can add more target amounts (with their own dates) after creating the reserve.
-          </p>
-        )}
-
-        <div className="field">
-          <label>Linked Account (optional)</label>
-          <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-            <option value="">(none)</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.friendlyName}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="field">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input
-              type="checkbox"
-              checked={autoAllocate}
-              disabled={!accountId}
-              onChange={(e) => setAutoAllocate(e.target.checked)}
-            />
-            Auto-allocate future transactions on this account to this reserve
-          </label>
-          {!accountId && (
-            <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
-              Link an account above to enable this — new transactions on that account (manual or imported) will be
-              suggested or auto-assigned to this reserve.
-            </p>
-          )}
-        </div>
-
-        {error && <p style={{ color: 'var(--color-accent-red)', fontSize: 13 }}>{error}</p>}
-
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" disabled={!canSave} onClick={handleSave}>
-            {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Reserve'}
-          </button>
-          {editingId && (
-            <button className="btn" onClick={resetForm}>
-              Cancel
-            </button>
-          )}
         </div>
       </div>
 
@@ -505,6 +443,85 @@ export default function Reserves() {
             </div>
           );
         })
+      )}
+
+      {modalOpen && (
+        <div className="modal-backdrop" onClick={resetForm}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>{editingId ? 'Edit Reserve' : 'New Reserve'}</h2>
+
+            <div className="field">
+              <label>Label</label>
+              <input
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="e.g. Best Buy promo balances"
+                autoFocus
+              />
+            </div>
+            <div className="field">
+              <label>Note (optional)</label>
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. store card, 0% promo" />
+            </div>
+
+            {!editingId && (
+              <>
+                <div className="field">
+                  <label>First Target Amount</label>
+                  <CurrencyInput value={firstAmount} onChange={setFirstAmount} placeholder="e.g. $1,200.00" />
+                </div>
+                <div className="field">
+                  <label>First Target Date (optional)</label>
+                  <input type="date" value={firstTargetDate} onChange={(e) => setFirstTargetDate(e.target.value)} />
+                </div>
+                <p className="text-muted" style={{ fontSize: 12, marginTop: -8 }}>
+                  You can add more target amounts (with their own dates) after creating the reserve.
+                </p>
+              </>
+            )}
+
+            <div className="field">
+              <label>Linked Account (optional)</label>
+              <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+                <option value="">(none)</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.friendlyName}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={autoAllocate}
+                  disabled={!accountId}
+                  onChange={(e) => setAutoAllocate(e.target.checked)}
+                />
+                Auto-allocate future transactions on this account to this reserve
+              </label>
+              {!accountId && (
+                <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  Link an account above to enable this — new transactions on that account (manual or imported) will
+                  be suggested or auto-assigned to this reserve.
+                </p>
+              )}
+            </div>
+
+            {error && <p style={{ color: 'var(--color-accent-red)', fontSize: 13 }}>{error}</p>}
+
+            <div className="modal-actions">
+              <button className="btn" onClick={resetForm}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" disabled={!canSave} onClick={handleSave}>
+                {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Reserve'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
