@@ -14,6 +14,7 @@ export default function Reserves() {
 
   // Reserve-level fields (label/note/account/auto-allocate). Amount and target date now
   // live on line items -- only the "new reserve" form collects a starter one.
+  const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [label, setLabel] = useState('');
   const [note, setNote] = useState('');
@@ -23,9 +24,12 @@ export default function Reserves() {
   const [firstTargetDate, setFirstTargetDate] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Read-only "show me the individual amounts" toggle on the page itself -- editing only
+  // happens inside the Edit Reserve modal.
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Add/edit line item mini-form, scoped to whichever reserve is expanded.
+  // Add/edit line item mini-form, shown inside the Edit Reserve modal for whichever
+  // reserve is currently being edited.
   const [liEditingId, setLiEditingId] = useState<string | null>(null);
   const [liFormOpen, setLiFormOpen] = useState(false);
   const [liLabel, setLiLabel] = useState('');
@@ -52,6 +56,20 @@ export default function Reserves() {
   }
 
   function resetForm() {
+    setModalOpen(false);
+    setEditingId(null);
+    setLabel('');
+    setNote('');
+    setAccountId('');
+    setAutoAllocate(false);
+    setFirstAmount('');
+    setFirstTargetDate('');
+    setError(null);
+    closeLiForm();
+  }
+
+  function startAdd() {
+    setModalOpen(true);
     setEditingId(null);
     setLabel('');
     setNote('');
@@ -63,6 +81,7 @@ export default function Reserves() {
   }
 
   function startEdit(reserve: Reserve) {
+    setModalOpen(true);
     setEditingId(reserve.id);
     setLabel(reserve.label);
     setNote(reserve.note ?? '');
@@ -121,7 +140,6 @@ export default function Reserves() {
 
   function toggleExpand(reserveId: string) {
     setExpandedId((prev) => (prev === reserveId ? null : reserveId));
-    closeLiForm();
   }
 
   function closeLiForm() {
@@ -133,8 +151,7 @@ export default function Reserves() {
     setLiError(null);
   }
 
-  function openAddLineItem(reserveId: string) {
-    setExpandedId(reserveId);
+  function openAddLineItem() {
     setLiFormOpen(true);
     setLiEditingId(null);
     setLiLabel('');
@@ -143,8 +160,7 @@ export default function Reserves() {
     setLiError(null);
   }
 
-  function openEditLineItem(reserveId: string, item: ReserveLineItem) {
-    setExpandedId(reserveId);
+  function openEditLineItem(item: ReserveLineItem) {
     setLiFormOpen(true);
     setLiEditingId(item.id);
     setLiLabel(item.label ?? '');
@@ -156,8 +172,8 @@ export default function Reserves() {
   const parsedLiAmount = parseFloat(liAmount);
   const liAmountValid = liAmount.trim() !== '' && !isNaN(parsedLiAmount) && parsedLiAmount > 0;
 
-  async function saveLineItem(reserveId: string) {
-    if (!liAmountValid) return;
+  async function saveLineItem() {
+    if (!liAmountValid || !editingId) return;
     setLiSaving(true);
     setLiError(null);
     try {
@@ -169,7 +185,7 @@ export default function Reserves() {
       if (liEditingId) {
         await window.electronAPI.reserveLineItems.update(liEditingId, input);
       } else {
-        await window.electronAPI.reserveLineItems.create(reserveId, input);
+        await window.electronAPI.reserveLineItems.create(editingId, input);
       }
       closeLiForm();
       await load();
@@ -195,11 +211,15 @@ export default function Reserves() {
   const today = todayIso();
   const totalReserved = reserves.reduce((sum, r) => sum + r.remaining, 0);
   const trulyAvailable = spendable ? spendable.balance - totalReserved : null;
+  const editingReserve = editingId ? reserves.find((r) => r.id === editingId) ?? null : null;
 
   return (
     <div>
       <div className="page-header">
         <h1>Reserves</h1>
+        <button className="btn btn-primary" onClick={startAdd}>
+          + New Reserve
+        </button>
       </div>
 
       <p className="text-muted" style={{ marginTop: -8, fontSize: 13, maxWidth: 720 }}>
@@ -207,7 +227,7 @@ export default function Reserves() {
         for future payments, like deferred-interest balances coming due — so they don't get swept up in everyday
         spending. A reserve can hold several target amounts (say, three same-day store-card purchases that each
         carry their own promo payoff date) — amounts due the same date are shown combined. When a payment is
-        allocated to the reserve, it pays down whichever target is first in line, in the order you set below.
+        allocated to the reserve, it pays down whichever target is first in line, in the order you set in Edit.
       </p>
 
       <div className="stat-row" style={{ marginTop: 12, marginBottom: 20 }}>
@@ -227,86 +247,6 @@ export default function Reserves() {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 15, marginTop: 0 }}>{editingId ? 'Edit Reserve' : 'New Reserve'}</h2>
-
-        <div className="grid-2">
-          <div className="field">
-            <label>Label</label>
-            <input
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder="e.g. Best Buy promo balances"
-            />
-          </div>
-          <div className="field">
-            <label>Note (optional)</label>
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. store card, 0% promo" />
-          </div>
-        </div>
-
-        {!editingId && (
-          <div className="grid-2">
-            <div className="field">
-              <label>First Target Amount</label>
-              <CurrencyInput value={firstAmount} onChange={setFirstAmount} placeholder="e.g. $1,200.00" />
-            </div>
-            <div className="field">
-              <label>First Target Date (optional)</label>
-              <input type="date" value={firstTargetDate} onChange={(e) => setFirstTargetDate(e.target.value)} />
-            </div>
-          </div>
-        )}
-        {!editingId && (
-          <p className="text-muted" style={{ fontSize: 12, marginTop: -8 }}>
-            You can add more target amounts (with their own dates) after creating the reserve.
-          </p>
-        )}
-
-        <div className="field">
-          <label>Linked Account (optional)</label>
-          <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-            <option value="">(none)</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.friendlyName}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="field">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input
-              type="checkbox"
-              checked={autoAllocate}
-              disabled={!accountId}
-              onChange={(e) => setAutoAllocate(e.target.checked)}
-            />
-            Auto-allocate future transactions on this account to this reserve
-          </label>
-          {!accountId && (
-            <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
-              Link an account above to enable this — new transactions on that account (manual or imported) will be
-              suggested or auto-assigned to this reserve.
-            </p>
-          )}
-        </div>
-
-        {error && <p style={{ color: 'var(--color-accent-red)', fontSize: 13 }}>{error}</p>}
-
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" disabled={!canSave} onClick={handleSave}>
-            {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Reserve'}
-          </button>
-          {editingId && (
-            <button className="btn" onClick={resetForm}>
-              Cancel
-            </button>
-          )}
-        </div>
-      </div>
-
       {loading ? (
         <div className="card empty-state">Loading…</div>
       ) : reserves.length === 0 ? (
@@ -317,6 +257,7 @@ export default function Reserves() {
           const fulfilled = r.remaining <= 0;
           const linkedAccountName = accountName(r.accountId);
           const expanded = expandedId === r.id;
+          const hasMultipleLineItems = r.lineItems.length > 1;
 
           return (
             <div className="card" key={r.id} style={{ marginBottom: 16 }}>
@@ -345,24 +286,10 @@ export default function Reserves() {
                     {r.note && <> · {r.note}</>}
                   </div>
                 </div>
-                <div className="stat-row" style={{ margin: 0 }}>
-                  <div className="card" style={{ padding: '8px 16px' }}>
-                    <div className="stat-label">Target</div>
-                    <div className="stat-value" style={{ fontSize: 18 }}>
-                      {formatCurrency(r.amount)}
-                    </div>
-                  </div>
-                  <div className="card" style={{ padding: '8px 16px' }}>
-                    <div className="stat-label">Allocated</div>
-                    <div className="stat-value" style={{ fontSize: 18 }}>
-                      {formatCurrency(r.allocated)}
-                    </div>
-                  </div>
-                  <div className="card" style={{ padding: '8px 16px' }}>
-                    <div className="stat-label">Remaining</div>
-                    <div className={`stat-value ${fulfilled ? 'amount-positive' : ''}`} style={{ fontSize: 18 }}>
-                      {formatCurrency(r.remaining)}
-                    </div>
+                <div className="card" style={{ padding: '8px 16px' }}>
+                  <div className="stat-label">Target</div>
+                  <div className={`stat-value ${fulfilled ? 'amount-positive' : ''}`} style={{ fontSize: 18 }}>
+                    {formatCurrency(r.remaining)}
                   </div>
                 </div>
                 <div className="ledger-actions">
@@ -379,9 +306,7 @@ export default function Reserves() {
                 <thead>
                   <tr>
                     <th>Target Date</th>
-                    <th style={{ textAlign: 'right' }}>Amount</th>
-                    <th style={{ textAlign: 'right' }}>Allocated</th>
-                    <th style={{ textAlign: 'right' }}>Remaining</th>
+                    <th style={{ textAlign: 'right' }}>Target</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -393,8 +318,6 @@ export default function Reserves() {
                           {g.targetDate ? formatDate(g.targetDate) : 'No date'}
                           {groupOverdue ? ' (past due)' : ''}
                         </td>
-                        <td style={{ textAlign: 'right' }}>{formatCurrency(g.amount)}</td>
-                        <td style={{ textAlign: 'right' }}>{formatCurrency(g.allocated)}</td>
                         <td style={{ textAlign: 'right' }} className={g.remaining <= 0 ? 'amount-positive' : undefined}>
                           {formatCurrency(g.remaining)}
                         </td>
@@ -404,107 +327,212 @@ export default function Reserves() {
                 </tbody>
               </table>
 
-              <button className="btn-link" style={{ marginTop: 8 }} onClick={() => toggleExpand(r.id)}>
-                {expanded ? 'Hide line items ▲' : `Manage line items (${r.lineItems.length}) ▾`}
-              </button>
+              {hasMultipleLineItems && (
+                <>
+                  <button className="btn-link" style={{ marginTop: 8 }} onClick={() => toggleExpand(r.id)}>
+                    {expanded ? 'Hide individual amounts ▲' : `Show individual amounts (${r.lineItems.length}) ▾`}
+                  </button>
 
-              {expanded && (
-                <div style={{ marginTop: 8 }}>
-                  <p className="text-muted" style={{ fontSize: 12 }}>
-                    Order here is the payoff order — an allocated payment fully satisfies the first item before
-                    spilling into the next. Use ↑/↓ to change precedence.
-                  </p>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th></th>
-                        <th>Label</th>
-                        <th style={{ textAlign: 'right' }}>Amount</th>
-                        <th style={{ textAlign: 'right' }}>Remaining</th>
-                        <th>Target Date</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {r.lineItems.map((item, idx) => (
-                        <tr key={item.id}>
-                          <td style={{ whiteSpace: 'nowrap' }}>
-                            <button
-                              className="btn-link"
-                              disabled={idx === 0}
-                              onClick={() => moveLineItem(item.id, 'up')}
-                              title="Move up (pay off sooner)"
-                            >
-                              ↑
-                            </button>
-                            <button
-                              className="btn-link"
-                              disabled={idx === r.lineItems.length - 1}
-                              onClick={() => moveLineItem(item.id, 'down')}
-                              title="Move down (pay off later)"
-                            >
-                              ↓
-                            </button>
-                          </td>
-                          <td>{item.label ?? '—'}</td>
-                          <td style={{ textAlign: 'right' }}>{formatCurrency(item.amount)}</td>
-                          <td style={{ textAlign: 'right' }} className={item.remaining <= 0 ? 'amount-positive' : undefined}>
-                            {formatCurrency(item.remaining)}
-                          </td>
-                          <td>{item.targetDate ? formatDate(item.targetDate) : '—'}</td>
-                          <td className="ledger-actions">
-                            <button className="btn-link" onClick={() => openEditLineItem(r.id, item)}>
-                              Edit
-                            </button>
-                            <button className="btn-link btn-link-danger" onClick={() => deleteLineItem(item.id)}>
-                              Delete
-                            </button>
-                          </td>
+                  {expanded && (
+                    <table className="data-table" style={{ marginTop: 8 }}>
+                      <thead>
+                        <tr>
+                          <th>Label</th>
+                          <th style={{ textAlign: 'right' }}>Target</th>
+                          <th>Target Date</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  {liFormOpen ? (
-                    <div className="field" style={{ marginTop: 8 }}>
-                      <div className="grid-2">
-                        <div className="field">
-                          <label>Label (optional)</label>
-                          <input value={liLabel} onChange={(e) => setLiLabel(e.target.value)} placeholder="e.g. TV" />
-                        </div>
-                        <div className="field">
-                          <label>Amount</label>
-                          <CurrencyInput value={liAmount} onChange={setLiAmount} placeholder="e.g. $450.00" />
-                        </div>
-                      </div>
-                      <div className="field">
-                        <label>Target Date (optional)</label>
-                        <input type="date" value={liTargetDate} onChange={(e) => setLiTargetDate(e.target.value)} />
-                      </div>
-                      {liError && <p style={{ color: 'var(--color-accent-red)', fontSize: 13 }}>{liError}</p>}
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button
-                          className="btn btn-primary"
-                          disabled={!liAmountValid || liSaving}
-                          onClick={() => saveLineItem(r.id)}
-                        >
-                          {liSaving ? 'Saving…' : liEditingId ? 'Save Line Item' : 'Add Line Item'}
-                        </button>
-                        <button className="btn" onClick={closeLiForm}>
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button className="btn" style={{ marginTop: 8 }} onClick={() => openAddLineItem(r.id)}>
-                      + Add Target Amount
-                    </button>
+                      </thead>
+                      <tbody>
+                        {r.lineItems.map((item) => (
+                          <tr key={item.id}>
+                            <td>{item.label ?? '—'}</td>
+                            <td style={{ textAlign: 'right' }} className={item.remaining <= 0 ? 'amount-positive' : undefined}>
+                              {formatCurrency(item.remaining)}
+                            </td>
+                            <td>{item.targetDate ? formatDate(item.targetDate) : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   )}
-                </div>
+                </>
               )}
             </div>
           );
         })
+      )}
+
+      {modalOpen && (
+        <div className="modal-backdrop" onClick={resetForm}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>{editingId ? 'Edit Reserve' : 'New Reserve'}</h2>
+
+            <div className="field">
+              <label>Label</label>
+              <input
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="e.g. Best Buy promo balances"
+                autoFocus
+              />
+            </div>
+            <div className="field">
+              <label>Note (optional)</label>
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. store card, 0% promo" />
+            </div>
+
+            {!editingId && (
+              <>
+                <div className="field">
+                  <label>First Target Amount</label>
+                  <CurrencyInput value={firstAmount} onChange={setFirstAmount} placeholder="e.g. $1,200.00" />
+                </div>
+                <div className="field">
+                  <label>First Target Date (optional)</label>
+                  <input type="date" value={firstTargetDate} onChange={(e) => setFirstTargetDate(e.target.value)} />
+                </div>
+                <p className="text-muted" style={{ fontSize: 12, marginTop: -8 }}>
+                  You can add more target amounts (with their own dates) after creating the reserve.
+                </p>
+              </>
+            )}
+
+            <div className="field">
+              <label>Linked Account (optional)</label>
+              <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+                <option value="">(none)</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.friendlyName}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={autoAllocate}
+                  disabled={!accountId}
+                  onChange={(e) => setAutoAllocate(e.target.checked)}
+                />
+                Auto-allocate future transactions on this account to this reserve
+              </label>
+              {!accountId && (
+                <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  Link an account above to enable this — new transactions on that account (manual or imported) will
+                  be suggested or auto-assigned to this reserve.
+                </p>
+              )}
+            </div>
+
+            {editingReserve && (
+              <div className="field">
+                <label>Target Amounts</label>
+                <p className="text-muted" style={{ fontSize: 12, marginTop: -4 }}>
+                  Order here is the payoff order — an allocated payment fully satisfies the first amount before
+                  spilling into the next.
+                </p>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>Label</th>
+                      <th style={{ textAlign: 'right' }}>Target</th>
+                      <th>Target Date</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {editingReserve.lineItems.map((item, idx) => (
+                      <tr key={item.id}>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <button
+                            className="btn-link"
+                            disabled={idx === 0}
+                            onClick={() => moveLineItem(item.id, 'up')}
+                            title="Move up (pay off sooner)"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            className="btn-link"
+                            disabled={idx === editingReserve.lineItems.length - 1}
+                            onClick={() => moveLineItem(item.id, 'down')}
+                            title="Move down (pay off later)"
+                          >
+                            ↓
+                          </button>
+                        </td>
+                        <td>{item.label ?? '—'}</td>
+                        <td style={{ textAlign: 'right' }} className={item.remaining <= 0 ? 'amount-positive' : undefined}>
+                          {formatCurrency(item.remaining)}
+                        </td>
+                        <td>{item.targetDate ? formatDate(item.targetDate) : '—'}</td>
+                        <td className="ledger-actions">
+                          <button className="btn-link" onClick={() => openEditLineItem(item)}>
+                            Edit
+                          </button>
+                          <button className="btn-link btn-link-danger" onClick={() => deleteLineItem(item.id)}>
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {liFormOpen ? (
+                  <div style={{ marginTop: 8 }}>
+                    <div className="grid-2">
+                      <div className="field">
+                        <label>Label (optional)</label>
+                        <input value={liLabel} onChange={(e) => setLiLabel(e.target.value)} placeholder="e.g. TV" />
+                      </div>
+                      <div className="field">
+                        <label>Target Amount</label>
+                        <CurrencyInput value={liAmount} onChange={setLiAmount} placeholder="e.g. $450.00" />
+                      </div>
+                    </div>
+                    <div className="field">
+                      <label>Target Date (optional)</label>
+                      <input type="date" value={liTargetDate} onChange={(e) => setLiTargetDate(e.target.value)} />
+                    </div>
+                    {liError && <p style={{ color: 'var(--color-accent-red)', fontSize: 13 }}>{liError}</p>}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        className="btn btn-primary"
+                        disabled={!liAmountValid || liSaving}
+                        onClick={saveLineItem}
+                      >
+                        {liSaving ? 'Saving…' : liEditingId ? 'Save Target Amount' : 'Add Target Amount'}
+                      </button>
+                      <button className="btn" onClick={closeLiForm}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button className="btn" style={{ marginTop: 8 }} onClick={openAddLineItem}>
+                    + Add Target Amount
+                  </button>
+                )}
+              </div>
+            )}
+
+            {error && <p style={{ color: 'var(--color-accent-red)', fontSize: 13 }}>{error}</p>}
+
+            <div className="modal-actions">
+              <button className="btn" onClick={resetForm}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" disabled={!canSave} onClick={handleSave}>
+                {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Reserve'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
