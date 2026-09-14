@@ -283,24 +283,10 @@ export default function Reserves() {
                     {r.note && <> · {r.note}</>}
                   </div>
                 </div>
-                <div className="stat-row" style={{ margin: 0 }}>
-                  <div className="card" style={{ padding: '8px 16px' }}>
-                    <div className="stat-label">Target</div>
-                    <div className="stat-value" style={{ fontSize: 18 }}>
-                      {formatCurrency(r.amount)}
-                    </div>
-                  </div>
-                  <div className="card" style={{ padding: '8px 16px' }}>
-                    <div className="stat-label">Allocated</div>
-                    <div className="stat-value" style={{ fontSize: 18 }}>
-                      {formatCurrency(r.allocated)}
-                    </div>
-                  </div>
-                  <div className="card" style={{ padding: '8px 16px' }}>
-                    <div className="stat-label">Remaining</div>
-                    <div className={`stat-value ${fulfilled ? 'amount-positive' : ''}`} style={{ fontSize: 18 }}>
-                      {formatCurrency(r.remaining)}
-                    </div>
+                <div className="card" style={{ padding: '8px 16px' }}>
+                  <div className="stat-label">Target</div>
+                  <div className={`stat-value ${fulfilled ? 'amount-positive' : ''}`} style={{ fontSize: 18 }}>
+                    {formatCurrency(r.remaining)}
                   </div>
                 </div>
                 <div className="ledger-actions">
@@ -317,9 +303,7 @@ export default function Reserves() {
                 <thead>
                   <tr>
                     <th>Target Date</th>
-                    <th style={{ textAlign: 'right' }}>Amount</th>
-                    <th style={{ textAlign: 'right' }}>Allocated</th>
-                    <th style={{ textAlign: 'right' }}>Remaining</th>
+                    <th style={{ textAlign: 'right' }}>Target</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -331,8 +315,6 @@ export default function Reserves() {
                           {g.targetDate ? formatDate(g.targetDate) : 'No date'}
                           {groupOverdue ? ' (past due)' : ''}
                         </td>
-                        <td style={{ textAlign: 'right' }}>{formatCurrency(g.amount)}</td>
-                        <td style={{ textAlign: 'right' }}>{formatCurrency(g.allocated)}</td>
                         <td style={{ textAlign: 'right' }} className={g.remaining <= 0 ? 'amount-positive' : undefined}>
                           {formatCurrency(g.remaining)}
                         </td>
@@ -357,8 +339,7 @@ export default function Reserves() {
                       <tr>
                         <th></th>
                         <th>Label</th>
-                        <th style={{ textAlign: 'right' }}>Amount</th>
-                        <th style={{ textAlign: 'right' }}>Remaining</th>
+                        <th style={{ textAlign: 'right' }}>Target</th>
                         <th>Target Date</th>
                         <th></th>
                       </tr>
@@ -385,7 +366,6 @@ export default function Reserves() {
                             </button>
                           </td>
                           <td>{item.label ?? '—'}</td>
-                          <td style={{ textAlign: 'right' }}>{formatCurrency(item.amount)}</td>
                           <td style={{ textAlign: 'right' }} className={item.remaining <= 0 ? 'amount-positive' : undefined}>
                             {formatCurrency(item.remaining)}
                           </td>
@@ -411,7 +391,7 @@ export default function Reserves() {
                           <input value={liLabel} onChange={(e) => setLiLabel(e.target.value)} placeholder="e.g. TV" />
                         </div>
                         <div className="field">
-                          <label>Amount</label>
+                          <label>Target Amount</label>
                           <CurrencyInput value={liAmount} onChange={setLiAmount} placeholder="e.g. $450.00" />
                         </div>
                       </div>
