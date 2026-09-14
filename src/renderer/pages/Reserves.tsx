@@ -5,6 +5,24 @@ import { SpendableBalance } from '../../shared/types/balanceAnchor';
 import CurrencyInput from '../components/CurrencyInput';
 import { formatCurrency, formatDate, todayIso } from '../utils/format';
 
+function daysUntil(targetDate: string, today: string): number {
+  const [ty, tm, td] = today.split('-').map(Number);
+  const [gy, gm, gd] = targetDate.split('-').map(Number);
+  return Math.round((Date.UTC(gy, gm - 1, gd) - Date.UTC(ty, tm - 1, td)) / 86400000);
+}
+
+function countdownText(days: number): string {
+  if (days < 0) return `${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} past due`;
+  if (days === 0) return 'Due today';
+  return `${days} day${days === 1 ? '' : 's'} left`;
+}
+
+function Countdown({ targetDate, remaining, today }: { targetDate: string | null; remaining: number; today: string }) {
+  if (!targetDate || remaining <= 0) return null;
+  const days = daysUntil(targetDate, today);
+  return <span className={days < 0 ? 'amount-negative' : 'text-muted'}>{countdownText(days)}</span>;
+}
+
 export default function Reserves() {
   const [reserves, setReserves] = useState<Reserve[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -259,6 +277,8 @@ export default function Reserves() {
           const expanded = expandedId === r.id;
           const hasMultipleLineItems = r.lineItems.length > 1;
 
+          const singleGroup = r.dateGroups.length === 1 ? r.dateGroups[0] : null;
+
           return (
             <div className="card" key={r.id} style={{ marginBottom: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
@@ -286,12 +306,6 @@ export default function Reserves() {
                     {r.note && <> · {r.note}</>}
                   </div>
                 </div>
-                <div className="card" style={{ padding: '8px 16px' }}>
-                  <div className="stat-label">Target</div>
-                  <div className={`stat-value ${fulfilled ? 'amount-positive' : ''}`} style={{ fontSize: 18 }}>
-                    {formatCurrency(r.remaining)}
-                  </div>
-                </div>
                 <div className="ledger-actions">
                   <button className="btn-link" onClick={() => startEdit(r)}>
                     Edit
@@ -302,30 +316,54 @@ export default function Reserves() {
                 </div>
               </div>
 
-              <table className="data-table" style={{ marginTop: 12 }}>
-                <thead>
-                  <tr>
-                    <th>Target Date</th>
-                    <th style={{ textAlign: 'right' }}>Target</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {r.dateGroups.map((g) => {
-                    const groupOverdue = g.targetDate != null && g.targetDate < today && g.remaining > 0;
-                    return (
-                      <tr key={g.targetDate ?? '__none__'}>
-                        <td className={groupOverdue ? 'amount-negative' : undefined}>
-                          {g.targetDate ? formatDate(g.targetDate) : 'No date'}
-                          {groupOverdue ? ' (past due)' : ''}
-                        </td>
-                        <td style={{ textAlign: 'right' }} className={g.remaining <= 0 ? 'amount-positive' : undefined}>
-                          {formatCurrency(g.remaining)}
-                        </td>
+              {singleGroup ? (
+                <div style={{ marginTop: 10, display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+                  <span
+                    style={{ fontSize: 22, fontWeight: 700 }}
+                    className={fulfilled ? 'amount-positive' : undefined}
+                  >
+                    {formatCurrency(singleGroup.remaining)}
+                  </span>
+                  {singleGroup.targetDate && (
+                    <span className="text-muted">due {formatDate(singleGroup.targetDate)}</span>
+                  )}
+                  <Countdown targetDate={singleGroup.targetDate} remaining={singleGroup.remaining} today={today} />
+                </div>
+              ) : (
+                <>
+                  <div style={{ marginTop: 10, fontWeight: 600 }}>
+                    Total: <span className={fulfilled ? 'amount-positive' : undefined}>{formatCurrency(r.remaining)}</span>
+                  </div>
+                  <table className="data-table" style={{ marginTop: 8 }}>
+                    <thead>
+                      <tr>
+                        <th>Target Date</th>
+                        <th style={{ textAlign: 'right' }}>Target</th>
+                        <th></th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody>
+                      {r.dateGroups.map((g) => {
+                        const groupOverdue = g.targetDate != null && g.targetDate < today && g.remaining > 0;
+                        return (
+                          <tr key={g.targetDate ?? '__none__'}>
+                            <td className={groupOverdue ? 'amount-negative' : undefined}>
+                              {g.targetDate ? formatDate(g.targetDate) : 'No date'}
+                              {groupOverdue ? ' (past due)' : ''}
+                            </td>
+                            <td style={{ textAlign: 'right' }} className={g.remaining <= 0 ? 'amount-positive' : undefined}>
+                              {formatCurrency(g.remaining)}
+                            </td>
+                            <td>
+                              <Countdown targetDate={g.targetDate} remaining={g.remaining} today={today} />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </>
+              )}
 
               {hasMultipleLineItems && (
                 <>
