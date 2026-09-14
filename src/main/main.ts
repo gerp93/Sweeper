@@ -20,7 +20,7 @@ import { BalanceAnchorService } from './database/balanceAnchorService';
 import { BalanceService } from './database/balanceService';
 import { HelocSettingsService } from './database/helocSettingsService';
 import { ReconciliationService } from './database/reconciliationService';
-import { ReserveService } from './database/reserveService';
+import { ObligationService } from './database/obligationService';
 import { CreateAccountInput, UpdateAccountInput } from '../shared/types/account';
 import { CreateTransactionInput, UpdateTransactionInput } from '../shared/types/transaction';
 import { CreateImportRuleInput, UpdateImportRuleInput } from '../shared/types/importRule';
@@ -29,11 +29,11 @@ import { CreateBalanceAnchorInput } from '../shared/types/balanceAnchor';
 import { UpdateHelocSettingsInput } from '../shared/types/helocSettings';
 import { CreateReconciliationInput } from '../shared/types/reconciliation';
 import {
-  CreateReserveInput,
-  UpdateReserveInput,
-  CreateReserveLineItemInput,
-  UpdateReserveLineItemInput,
-} from '../shared/types/reserve';
+  CreateObligationInput,
+  UpdateObligationInput,
+  CreateObligationLineItemInput,
+  UpdateObligationLineItemInput,
+} from '../shared/types/obligation';
 import { Database } from 'sql.js';
 
 pinUserDataPath();
@@ -79,7 +79,7 @@ let balanceAnchorService: BalanceAnchorService;
 let balanceService: BalanceService;
 let helocSettingsService: HelocSettingsService;
 let reconciliationService: ReconciliationService;
-let reserveService: ReserveService;
+let obligationService: ObligationService;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -223,7 +223,7 @@ app.whenReady().then(async () => {
   balanceService = new BalanceService(balanceAnchorService, transactionService);
   helocSettingsService = new HelocSettingsService(db);
   reconciliationService = new ReconciliationService(db, balanceService);
-  reserveService = new ReserveService(db);
+  obligationService = new ObligationService(db);
 
   importRuleService.seedDefaultRules();
 
@@ -332,28 +332,28 @@ function registerIPCHandlers() {
     return { success: true };
   });
 
-  // Reserve handlers
-  ipcMain.handle('reserves:getAll', () => reserveService.getAllReserves());
-  ipcMain.handle('reserves:getTotal', () => reserveService.getTotalReserved());
-  ipcMain.handle('reserves:create', (_, input: CreateReserveInput) => reserveService.createReserve(input));
-  ipcMain.handle('reserves:update', (_, id: string, input: UpdateReserveInput) =>
-    reserveService.updateReserve(id, input)
+  // Obligation handlers
+  ipcMain.handle('obligations:getAll', () => obligationService.getAllObligations());
+  ipcMain.handle('obligations:getTotal', () => obligationService.getTotalObligated());
+  ipcMain.handle('obligations:create', (_, input: CreateObligationInput) => obligationService.createObligation(input));
+  ipcMain.handle('obligations:update', (_, id: string, input: UpdateObligationInput) =>
+    obligationService.updateObligation(id, input)
   );
-  ipcMain.handle('reserves:delete', (_, id: string) => {
-    reserveService.deleteReserve(id);
+  ipcMain.handle('obligations:delete', (_, id: string) => {
+    obligationService.deleteObligation(id);
     return { success: true };
   });
 
-  // Reserve line item handlers
-  ipcMain.handle('reserveLineItems:create', (_, reserveId: string, input: CreateReserveLineItemInput) =>
-    reserveService.createLineItem(reserveId, input)
+  // Obligation line item handlers
+  ipcMain.handle('obligationLineItems:create', (_, obligationId: string, input: CreateObligationLineItemInput) =>
+    obligationService.createLineItem(obligationId, input)
   );
-  ipcMain.handle('reserveLineItems:update', (_, id: string, input: UpdateReserveLineItemInput) =>
-    reserveService.updateLineItem(id, input)
+  ipcMain.handle('obligationLineItems:update', (_, id: string, input: UpdateObligationLineItemInput) =>
+    obligationService.updateLineItem(id, input)
   );
-  ipcMain.handle('reserveLineItems:delete', (_, id: string) => reserveService.deleteLineItem(id));
-  ipcMain.handle('reserveLineItems:move', (_, id: string, direction: 'up' | 'down') =>
-    reserveService.moveLineItem(id, direction)
+  ipcMain.handle('obligationLineItems:delete', (_, id: string) => obligationService.deleteLineItem(id));
+  ipcMain.handle('obligationLineItems:move', (_, id: string, direction: 'up' | 'down') =>
+    obligationService.moveLineItem(id, direction)
   );
 
   // Database location handlers

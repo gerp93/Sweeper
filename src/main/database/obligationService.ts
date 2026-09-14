@@ -1,19 +1,19 @@
 import { Database } from 'sql.js';
 import {
-  Reserve,
-  ReserveLineItem,
-  ReserveDateGroup,
-  CreateReserveInput,
-  UpdateReserveInput,
-  CreateReserveLineItemInput,
-  UpdateReserveLineItemInput,
-} from '../../shared/types/reserve';
+  Obligation,
+  ObligationLineItem,
+  ObligationDateGroup,
+  CreateObligationInput,
+  UpdateObligationInput,
+  CreateObligationLineItemInput,
+  UpdateObligationLineItemInput,
+} from '../../shared/types/obligation';
 import { v4 as uuidv4 } from 'uuid';
 import { saveDatabase } from './schema';
 
 interface RawLineItem {
   id: string;
-  reserveId: string;
+  obligationId: string;
   label: string | null;
   amount: number;
   targetDate: string | null;
@@ -29,7 +29,7 @@ function rowToRawLineItem(columns: string[], row: any[]): RawLineItem {
   });
   return {
     id: obj.id,
-    reserveId: obj.reserveId,
+    obligationId: obj.obligationId,
     label: obj.label,
     amount: obj.amount,
     targetDate: obj.targetDate,
@@ -41,7 +41,7 @@ function rowToRawLineItem(columns: string[], row: any[]): RawLineItem {
 
 const LINE_ITEM_COLUMNS = `
   id,
-  reserve_id as reserveId,
+  obligation_id as obligationId,
   label,
   amount,
   target_date as targetDate,
@@ -54,11 +54,12 @@ const LINE_ITEM_COLUMNS = `
 // date (undated items last), then by creation order.
 const LINE_ITEM_PRECEDENCE_ORDER = `ORDER BY priority ASC, (target_date IS NULL), target_date ASC, created_at ASC`;
 
-// A transaction allocated to a reserve doesn't say which specific line item it's for (the
-// whole point -- e.g. three same-day store-card promo balances that a single payment can't
-// be told apart between). Instead, the reserve's total allocated dollars cascade through its
-// line items in precedence order: fully pay off the first, then spill into the next, etc.
-function applyWaterfall(items: RawLineItem[], totalAllocated: number): ReserveLineItem[] {
+// A transaction allocated to an obligation doesn't say which specific line item it's for
+// (the whole point -- e.g. three same-day store-card promo balances that a single payment
+// can't be told apart between). Instead, the obligation's total allocated dollars cascade
+// through its line items in precedence order: fully pay off the first, then spill into the
+// next, etc.
+function applyWaterfall(items: RawLineItem[], totalAllocated: number): ObligationLineItem[] {
   let pool = Math.max(totalAllocated, 0);
   return items.map((item) => {
     const allocated = Math.min(item.amount, pool);
@@ -67,8 +68,8 @@ function applyWaterfall(items: RawLineItem[], totalAllocated: number): ReserveLi
   });
 }
 
-function buildDateGroups(items: ReserveLineItem[]): ReserveDateGroup[] {
-  const groups = new Map<string | null, ReserveDateGroup>();
+function buildDateGroups(items: ObligationLineItem[]): ObligationDateGroup[] {
+  const groups = new Map<string | null, ObligationDateGroup>();
   for (const item of items) {
     const key = item.targetDate;
     const existing = groups.get(key);
@@ -88,14 +89,14 @@ function buildDateGroups(items: ReserveLineItem[]): ReserveDateGroup[] {
   });
 }
 
-export class ReserveService {
+export class ObligationService {
   constructor(private db: Database) {}
 
-  private getRawLineItems(reserveId: string): RawLineItem[] {
+  private getRawLineItems(obligationId: string): RawLineItem[] {
     const stmt = this.db.prepare(
-      `SELECT ${LINE_ITEM_COLUMNS} FROM reserve_line_items WHERE reserve_id = ? ${LINE_ITEM_PRECEDENCE_ORDER}`
+      `SELECT ${LINE_ITEM_COLUMNS} FROM obligation_line_items WHERE obligation_id = ? ${LINE_ITEM_PRECEDENCE_ORDER}`
     );
-    stmt.bind([reserveId]);
+    stmt.bind([obligationId]);
     const out: RawLineItem[] = [];
     while (stmt.step()) {
       out.push(rowToRawLineItem(stmt.getColumnNames(), stmt.get()));
@@ -104,24 +105,32 @@ export class ReserveService {
     return out;
   }
 
-  private getTotalAllocated(reserveId: string): number {
-    const stmt = this.db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE reserve_id = ?`);
-    stmt.bind([reserveId]);
+  private getTotalAllocated(obligationId: string): number {
+    const stmt = this.db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE obligation_id = ?`);
+    stmt.bind([obligationId]);
     const total = stmt.step() ? Number(stmt.get()[0]) : 0;
     stmt.free();
     return total;
   }
 
-  private buildReserve(reserveRow: { id: string; label: string; note: string | null; accountId: string | null; autoAllocate: boolean; createdAt: string; updatedAt: string }): Reserve {
-    const rawItems = this.getRawLineItems(reserveRow.id);
-    const totalAllocated = this.getTotalAllocated(reserveRow.id);
+  private buildObligation(obligationRow: {
+    id: string;
+    label: string;
+    note: string | null;
+    accountId: string | null;
+    autoAllocate: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }): Obligation {
+    const rawItems = this.getRawLineItems(obligationRow.id);
+    const totalAllocated = this.getTotalAllocated(obligationRow.id);
     const lineItems = applyWaterfall(rawItems, totalAllocated);
     const dateGroups = buildDateGroups(lineItems);
     const amount = lineItems.reduce((sum, i) => sum + i.amount, 0);
     const allocated = lineItems.reduce((sum, i) => sum + i.allocated, 0);
 
     return {
-      ...reserveRow,
+      ...obligationRow,
       lineItems,
       dateGroups,
       amount,
@@ -130,24 +139,24 @@ export class ReserveService {
     };
   }
 
-  getAllReserves(): Reserve[] {
+  getAllObligations(): Obligation[] {
     const results = this.db.exec(`
       SELECT id, label, note, account_id as accountId, auto_allocate as autoAllocate, created_at as createdAt, updated_at as updatedAt
-      FROM heloc_reserves
+      FROM heloc_obligations
       ORDER BY created_at ASC
     `);
     if (results.length === 0) return [];
     return results[0].values.map((row) => {
       const obj: any = {};
       results[0].columns.forEach((col, idx) => (obj[col] = row[idx]));
-      return this.buildReserve({ ...obj, autoAllocate: Boolean(obj.autoAllocate) });
+      return this.buildObligation({ ...obj, autoAllocate: Boolean(obj.autoAllocate) });
     });
   }
 
-  getReserveById(id: string): Reserve | null {
+  getObligationById(id: string): Obligation | null {
     const stmt = this.db.prepare(
       `SELECT id, label, note, account_id as accountId, auto_allocate as autoAllocate, created_at as createdAt, updated_at as updatedAt
-       FROM heloc_reserves WHERE id = ?`
+       FROM heloc_obligations WHERE id = ?`
     );
     stmt.bind([id]);
     if (!stmt.step()) {
@@ -157,19 +166,19 @@ export class ReserveService {
     const obj: any = {};
     stmt.getColumnNames().forEach((col, idx) => (obj[col] = stmt.get()[idx]));
     stmt.free();
-    return this.buildReserve({ ...obj, autoAllocate: Boolean(obj.autoAllocate) });
+    return this.buildObligation({ ...obj, autoAllocate: Boolean(obj.autoAllocate) });
   }
 
-  getTotalReserved(): number {
-    return this.getAllReserves().reduce((sum, r) => sum + r.remaining, 0);
+  getTotalObligated(): number {
+    return this.getAllObligations().reduce((sum, o) => sum + o.remaining, 0);
   }
 
-  createReserve(input: CreateReserveInput): Reserve {
+  createObligation(input: CreateObligationInput): Obligation {
     const id = uuidv4();
     const now = new Date().toISOString();
 
     this.db.run(
-      `INSERT INTO heloc_reserves (id, label, note, account_id, auto_allocate, created_at, updated_at)
+      `INSERT INTO heloc_obligations (id, label, note, account_id, auto_allocate, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [id, input.label, input.note ?? null, input.accountId ?? null, input.autoAllocate ? 1 : 0, now, now]
     );
@@ -180,10 +189,10 @@ export class ReserveService {
 
     saveDatabase(this.db);
 
-    return this.getReserveById(id)!;
+    return this.getObligationById(id)!;
   }
 
-  updateReserve(id: string, input: UpdateReserveInput): Reserve {
+  updateObligation(id: string, input: UpdateObligationInput): Obligation {
     const updates: string[] = [];
     const params: any[] = [];
 
@@ -207,39 +216,48 @@ export class ReserveService {
     params.push(new Date().toISOString());
     params.push(id);
 
-    this.db.run(`UPDATE heloc_reserves SET ${updates.join(', ')} WHERE id = ?`, params);
+    this.db.run(`UPDATE heloc_obligations SET ${updates.join(', ')} WHERE id = ?`, params);
 
     saveDatabase(this.db);
 
-    return this.getReserveById(id)!;
+    return this.getObligationById(id)!;
   }
 
-  deleteReserve(id: string): void {
-    this.db.run(`DELETE FROM heloc_reserves WHERE id = ?`, [id]);
+  deleteObligation(id: string): void {
+    this.db.run(`DELETE FROM heloc_obligations WHERE id = ?`, [id]);
     saveDatabase(this.db);
   }
 
-  private insertLineItem(reserveId: string, input: CreateReserveLineItemInput, defaultPriority: number): string {
+  private insertLineItem(obligationId: string, input: CreateObligationLineItemInput, defaultPriority: number): string {
     const id = uuidv4();
     const now = new Date().toISOString();
     this.db.run(
-      `INSERT INTO reserve_line_items (id, reserve_id, label, amount, target_date, priority, created_at, updated_at)
+      `INSERT INTO obligation_line_items (id, obligation_id, label, amount, target_date, priority, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, reserveId, input.label ?? null, input.amount, input.targetDate ?? null, input.priority ?? defaultPriority, now, now]
+      [
+        id,
+        obligationId,
+        input.label ?? null,
+        input.amount,
+        input.targetDate ?? null,
+        input.priority ?? defaultPriority,
+        now,
+        now,
+      ]
     );
     return id;
   }
 
-  createLineItem(reserveId: string, input: CreateReserveLineItemInput): Reserve {
-    const nextPriority = this.getRawLineItems(reserveId).length;
-    this.insertLineItem(reserveId, input, nextPriority);
-    this.db.run(`UPDATE heloc_reserves SET updated_at = ? WHERE id = ?`, [new Date().toISOString(), reserveId]);
+  createLineItem(obligationId: string, input: CreateObligationLineItemInput): Obligation {
+    const nextPriority = this.getRawLineItems(obligationId).length;
+    this.insertLineItem(obligationId, input, nextPriority);
+    this.db.run(`UPDATE heloc_obligations SET updated_at = ? WHERE id = ?`, [new Date().toISOString(), obligationId]);
     saveDatabase(this.db);
-    return this.getReserveById(reserveId)!;
+    return this.getObligationById(obligationId)!;
   }
 
-  updateLineItem(id: string, input: UpdateReserveLineItemInput): Reserve {
-    const reserveId = this.getLineItemReserveId(id);
+  updateLineItem(id: string, input: UpdateObligationLineItemInput): Obligation {
+    const obligationId = this.getLineItemObligationId(id);
     const updates: string[] = [];
     const params: any[] = [];
 
@@ -263,59 +281,59 @@ export class ReserveService {
     params.push(new Date().toISOString());
     params.push(id);
 
-    this.db.run(`UPDATE reserve_line_items SET ${updates.join(', ')} WHERE id = ?`, params);
+    this.db.run(`UPDATE obligation_line_items SET ${updates.join(', ')} WHERE id = ?`, params);
     saveDatabase(this.db);
 
-    return this.getReserveById(reserveId)!;
+    return this.getObligationById(obligationId)!;
   }
 
-  deleteLineItem(id: string): Reserve {
-    const reserveId = this.getLineItemReserveId(id);
-    this.db.run(`DELETE FROM reserve_line_items WHERE id = ?`, [id]);
+  deleteLineItem(id: string): Obligation {
+    const obligationId = this.getLineItemObligationId(id);
+    this.db.run(`DELETE FROM obligation_line_items WHERE id = ?`, [id]);
     saveDatabase(this.db);
-    return this.getReserveById(reserveId)!;
+    return this.getObligationById(obligationId)!;
   }
 
   // Swaps this line item's precedence with its neighbor in the current sort order, so
   // moving it up means it gets paid off sooner by auto-allocated transactions.
-  moveLineItem(id: string, direction: 'up' | 'down'): Reserve {
-    const reserveId = this.getLineItemReserveId(id);
-    const items = this.getRawLineItems(reserveId);
+  moveLineItem(id: string, direction: 'up' | 'down'): Obligation {
+    const obligationId = this.getLineItemObligationId(id);
+    const items = this.getRawLineItems(obligationId);
     const index = items.findIndex((i) => i.id === id);
     const neighborIndex = direction === 'up' ? index - 1 : index + 1;
 
     if (index === -1 || neighborIndex < 0 || neighborIndex >= items.length) {
-      return this.getReserveById(reserveId)!;
+      return this.getObligationById(obligationId)!;
     }
 
     const current = items[index];
     const neighbor = items[neighborIndex];
     const now = new Date().toISOString();
 
-    this.db.run(`UPDATE reserve_line_items SET priority = ?, updated_at = ? WHERE id = ?`, [
+    this.db.run(`UPDATE obligation_line_items SET priority = ?, updated_at = ? WHERE id = ?`, [
       neighbor.priority,
       now,
       current.id,
     ]);
-    this.db.run(`UPDATE reserve_line_items SET priority = ?, updated_at = ? WHERE id = ?`, [
+    this.db.run(`UPDATE obligation_line_items SET priority = ?, updated_at = ? WHERE id = ?`, [
       current.priority,
       now,
       neighbor.id,
     ]);
     saveDatabase(this.db);
 
-    return this.getReserveById(reserveId)!;
+    return this.getObligationById(obligationId)!;
   }
 
-  private getLineItemReserveId(id: string): string {
-    const stmt = this.db.prepare(`SELECT reserve_id FROM reserve_line_items WHERE id = ?`);
+  private getLineItemObligationId(id: string): string {
+    const stmt = this.db.prepare(`SELECT obligation_id FROM obligation_line_items WHERE id = ?`);
     stmt.bind([id]);
     if (!stmt.step()) {
       stmt.free();
-      throw new Error(`Reserve line item with id ${id} not found`);
+      throw new Error(`Obligation line item with id ${id} not found`);
     }
-    const reserveId = stmt.get()[0] as string;
+    const obligationId = stmt.get()[0] as string;
     stmt.free();
-    return reserveId;
+    return obligationId;
   }
 }

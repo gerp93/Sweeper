@@ -7,11 +7,11 @@ import { CreateBalanceAnchorInput } from '../shared/types/balanceAnchor';
 import { UpdateHelocSettingsInput } from '../shared/types/helocSettings';
 import { CreateReconciliationInput } from '../shared/types/reconciliation';
 import {
-  CreateReserveInput,
-  UpdateReserveInput,
-  CreateReserveLineItemInput,
-  UpdateReserveLineItemInput,
-} from '../shared/types/reserve';
+  CreateObligationInput,
+  UpdateObligationInput,
+  CreateObligationLineItemInput,
+  UpdateObligationLineItemInput,
+} from '../shared/types/obligation';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   accounts: {
@@ -73,21 +73,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     delete: (id: string) => ipcRenderer.invoke('reconciliations:delete', id),
   },
 
-  reserves: {
-    getAll: () => ipcRenderer.invoke('reserves:getAll'),
-    getTotal: () => ipcRenderer.invoke('reserves:getTotal'),
-    create: (input: CreateReserveInput) => ipcRenderer.invoke('reserves:create', input),
-    update: (id: string, input: UpdateReserveInput) => ipcRenderer.invoke('reserves:update', id, input),
-    delete: (id: string) => ipcRenderer.invoke('reserves:delete', id),
+  obligations: {
+    getAll: () => ipcRenderer.invoke('obligations:getAll'),
+    getTotal: () => ipcRenderer.invoke('obligations:getTotal'),
+    create: (input: CreateObligationInput) => ipcRenderer.invoke('obligations:create', input),
+    update: (id: string, input: UpdateObligationInput) => ipcRenderer.invoke('obligations:update', id, input),
+    delete: (id: string) => ipcRenderer.invoke('obligations:delete', id),
   },
 
-  reserveLineItems: {
-    create: (reserveId: string, input: CreateReserveLineItemInput) =>
-      ipcRenderer.invoke('reserveLineItems:create', reserveId, input),
-    update: (id: string, input: UpdateReserveLineItemInput) =>
-      ipcRenderer.invoke('reserveLineItems:update', id, input),
-    delete: (id: string) => ipcRenderer.invoke('reserveLineItems:delete', id),
-    move: (id: string, direction: 'up' | 'down') => ipcRenderer.invoke('reserveLineItems:move', id, direction),
+  obligationLineItems: {
+    create: (obligationId: string, input: CreateObligationLineItemInput) =>
+      ipcRenderer.invoke('obligationLineItems:create', obligationId, input),
+    update: (id: string, input: UpdateObligationLineItemInput) =>
+      ipcRenderer.invoke('obligationLineItems:update', id, input),
+    delete: (id: string) => ipcRenderer.invoke('obligationLineItems:delete', id),
+    move: (id: string, direction: 'up' | 'down') => ipcRenderer.invoke('obligationLineItems:move', id, direction),
   },
 
   dbLocation: {

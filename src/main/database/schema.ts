@@ -58,8 +58,33 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
     )
   `);
 
+  // Migration: "Reserves" was renamed to "Obligations" -- the old term read as money being
+  // saved up, when it's actually the opposite (money already owed, held back from the
+  // spendable balance). Rename the tables/columns in place; no data is touched. Guarded
+  // because a fresh database, or one that's already been renamed, won't have the old names.
+  try {
+    db.run(`ALTER TABLE heloc_reserves RENAME TO heloc_obligations`);
+  } catch (e) {
+    // already renamed, or never existed
+  }
+  try {
+    db.run(`ALTER TABLE reserve_line_items RENAME TO obligation_line_items`);
+  } catch (e) {
+    // already renamed, or never existed
+  }
+  try {
+    db.run(`ALTER TABLE obligation_line_items RENAME COLUMN reserve_id TO obligation_id`);
+  } catch (e) {
+    // already renamed, or never existed
+  }
+  try {
+    db.run(`ALTER TABLE transactions RENAME COLUMN reserve_id TO obligation_id`);
+  } catch (e) {
+    // already renamed, or table doesn't exist yet on a fresh database
+  }
+
   db.run(`
-    CREATE TABLE IF NOT EXISTS heloc_reserves (
+    CREATE TABLE IF NOT EXISTS heloc_obligations (
       id TEXT PRIMARY KEY,
       label TEXT NOT NULL,
       note TEXT,
@@ -71,61 +96,61 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
     )
   `);
 
-  // Migration: account-linked auto-allocation was added after heloc_reserves already
+  // Migration: account-linked auto-allocation was added after heloc_obligations already
   // shipped -- add the columns to databases created before this change.
   try {
-    db.run(`ALTER TABLE heloc_reserves ADD COLUMN account_id TEXT`);
+    db.run(`ALTER TABLE heloc_obligations ADD COLUMN account_id TEXT`);
   } catch (e) {
     // already exists
   }
   try {
-    db.run(`ALTER TABLE heloc_reserves ADD COLUMN auto_allocate INTEGER NOT NULL DEFAULT 0`);
+    db.run(`ALTER TABLE heloc_obligations ADD COLUMN auto_allocate INTEGER NOT NULL DEFAULT 0`);
   } catch (e) {
     // already exists
   }
 
   db.run(`
-    CREATE TABLE IF NOT EXISTS reserve_line_items (
+    CREATE TABLE IF NOT EXISTS obligation_line_items (
       id TEXT PRIMARY KEY,
-      reserve_id TEXT NOT NULL,
+      obligation_id TEXT NOT NULL,
       label TEXT,
       amount REAL NOT NULL,
       target_date TEXT,
       priority INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      FOREIGN KEY (reserve_id) REFERENCES heloc_reserves(id) ON DELETE CASCADE
+      FOREIGN KEY (obligation_id) REFERENCES heloc_obligations(id) ON DELETE CASCADE
     )
   `);
 
-  // Migration: a reserve's single amount/target_date became one-or-more line items (so a
-  // reserve can hold several distinct promo balances, e.g. same-day purchases on a store
-  // card that each carry their own payoff date). Backfill one line item per pre-existing
-  // reserve from its old columns, then drop those now-unused columns.
+  // Migration: an obligation's single amount/target_date became one-or-more line items (so
+  // it can hold several distinct promo balances, e.g. same-day purchases on a store card
+  // that each carry their own payoff date). Backfill one line item per pre-existing
+  // obligation from its old columns, then drop those now-unused columns.
   try {
-    const legacy = db.exec(`SELECT id, amount, target_date, created_at, updated_at FROM heloc_reserves`);
+    const legacy = db.exec(`SELECT id, amount, target_date, created_at, updated_at FROM heloc_obligations`);
     if (legacy.length > 0) {
-      const existing = db.exec(`SELECT DISTINCT reserve_id FROM reserve_line_items`);
+      const existing = db.exec(`SELECT DISTINCT obligation_id FROM obligation_line_items`);
       const alreadyMigrated = new Set(existing.length > 0 ? existing[0].values.map((row) => row[0]) : []);
       for (const [id, amount, targetDate, createdAt, updatedAt] of legacy[0].values) {
         if (alreadyMigrated.has(id)) continue;
         db.run(
-          `INSERT INTO reserve_line_items (id, reserve_id, amount, target_date, priority, created_at, updated_at)
+          `INSERT INTO obligation_line_items (id, obligation_id, amount, target_date, priority, created_at, updated_at)
            VALUES (?, ?, ?, ?, 0, ?, ?)`,
           [uuidv4(), id, amount, targetDate, createdAt, updatedAt]
         );
       }
     }
   } catch (e) {
-    // heloc_reserves has no amount/target_date columns -- already migrated or a fresh database
+    // heloc_obligations has no amount/target_date columns -- already migrated or a fresh database
   }
   try {
-    db.run(`ALTER TABLE heloc_reserves DROP COLUMN amount`);
+    db.run(`ALTER TABLE heloc_obligations DROP COLUMN amount`);
   } catch (e) {
     // already dropped or never existed
   }
   try {
-    db.run(`ALTER TABLE heloc_reserves DROP COLUMN target_date`);
+    db.run(`ALTER TABLE heloc_obligations DROP COLUMN target_date`);
   } catch (e) {
     // already dropped or never existed
   }
@@ -141,19 +166,19 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
       memo TEXT,
       category TEXT,
       import_batch_id TEXT,
-      reserve_id TEXT,
+      obligation_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE SET NULL,
       FOREIGN KEY (import_batch_id) REFERENCES import_batches(id) ON DELETE SET NULL,
-      FOREIGN KEY (reserve_id) REFERENCES heloc_reserves(id) ON DELETE SET NULL
+      FOREIGN KEY (obligation_id) REFERENCES heloc_obligations(id) ON DELETE SET NULL
     )
   `);
 
-  // Migration: reserve allocation was added after transactions already shipped -- add the
+  // Migration: obligation allocation was added after transactions already shipped -- add the
   // column to databases created before this change.
   try {
-    db.run(`ALTER TABLE transactions ADD COLUMN reserve_id TEXT`);
+    db.run(`ALTER TABLE transactions ADD COLUMN obligation_id TEXT`);
   } catch (e) {
     // already exists
   }
@@ -230,14 +255,25 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
     )
   `);
 
+  // Drop indexes that still carry the pre-rename names -- RENAME COLUMN/TABLE keeps them
+  // functional under their old names, so leaving them in place would just leave a stale-named
+  // duplicate sitting alongside the newly (re)created one below.
+  db.run(`DROP INDEX IF EXISTS idx_transactions_reserve`);
+  db.run(`DROP INDEX IF EXISTS idx_reserve_line_items_reserve`);
+  db.run(`DROP INDEX IF EXISTS idx_reserve_line_items_target_date`);
+  // Leftover from the reserve -> line-items migration: this index was never dropped when
+  // target_date moved off the parent table, so it's been dangling on a column that no
+  // longer exists.
+  db.run(`DROP INDEX IF EXISTS idx_heloc_reserves_target_date`);
+
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_reserve ON transactions(reserve_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_obligation ON transactions(obligation_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_description ON transactions(description)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_balance_anchors_date ON balance_anchors(as_of_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_reconciliations_date ON reconciliations(as_of_date)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_reserve_line_items_reserve ON reserve_line_items(reserve_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_reserve_line_items_target_date ON reserve_line_items(target_date)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_obligation_line_items_obligation ON obligation_line_items(obligation_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_obligation_line_items_target_date ON obligation_line_items(target_date)`);
 
   saveDatabase(db, dbPath);
 

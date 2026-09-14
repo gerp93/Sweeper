@@ -1,25 +1,25 @@
 import { useState } from 'react';
 import { Account } from '../../shared/types/account';
 import { CreateTransactionInput, Transaction } from '../../shared/types/transaction';
-import { Reserve } from '../../shared/types/reserve';
+import { Obligation } from '../../shared/types/obligation';
 import { todayIso, formatCurrency } from '../utils/format';
 
 interface Props {
   transaction?: Transaction;
   accounts: Account[];
-  reserves: Reserve[];
+  obligations: Obligation[];
   defaultDate?: string;
   onSave: (input: CreateTransactionInput) => void;
   onCancel: () => void;
 }
 
-export default function TransactionForm({ transaction, accounts, reserves, defaultDate, onSave, onCancel }: Props) {
+export default function TransactionForm({ transaction, accounts, obligations, defaultDate, onSave, onCancel }: Props) {
   const [date, setDate] = useState(transaction?.date ?? defaultDate ?? todayIso());
   const [description, setDescription] = useState(transaction?.description ?? '');
   const [accountId, setAccountId] = useState(transaction?.accountId ?? '');
   const [amount, setAmount] = useState(transaction ? String(transaction.amount) : '');
   const [memo, setMemo] = useState(transaction?.memo ?? '');
-  const [reserveId, setReserveId] = useState(transaction?.reserveId ?? '');
+  const [obligationId, setObligationId] = useState(transaction?.obligationId ?? '');
 
   const parsedAmount = parseFloat(amount);
   const isValid = date.trim() !== '' && description.trim() !== '' && amount.trim() !== '' && !isNaN(parsedAmount);
@@ -27,10 +27,10 @@ export default function TransactionForm({ transaction, accounts, reserves, defau
   function handleAccountChange(newAccountId: string) {
     setAccountId(newAccountId);
     // Adding a new transaction (not editing one) on an account that has an auto-allocate
-    // reserve linked to it -- suggest that reserve, but leave it fully overridable below.
-    if (!transaction && !reserveId) {
-      const match = reserves.find((r) => r.accountId === newAccountId && r.autoAllocate);
-      if (match) setReserveId(match.id);
+    // obligation linked to it -- suggest that obligation, but leave it fully overridable below.
+    if (!transaction && !obligationId) {
+      const match = obligations.find((o) => o.accountId === newAccountId && o.autoAllocate);
+      if (match) setObligationId(match.id);
     }
   }
 
@@ -70,12 +70,12 @@ export default function TransactionForm({ transaction, accounts, reserves, defau
           </select>
         </div>
         <div className="field">
-          <label>Allocate to Reserve (optional)</label>
-          <select value={reserveId ?? ''} onChange={(e) => setReserveId(e.target.value)}>
+          <label>Allocate to Obligation (optional)</label>
+          <select value={obligationId ?? ''} onChange={(e) => setObligationId(e.target.value)}>
             <option value="">(none)</option>
-            {reserves.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.label} — {formatCurrency(r.remaining)} remaining
+            {obligations.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label} — {formatCurrency(o.remaining)} remaining
               </option>
             ))}
           </select>
@@ -98,7 +98,7 @@ export default function TransactionForm({ transaction, accounts, reserves, defau
                 accountId: accountId || null,
                 amount: parsedAmount,
                 memo: memo.trim() || null,
-                reserveId: reserveId || null,
+                obligationId: obligationId || null,
               })
             }
           >
