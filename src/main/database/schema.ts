@@ -255,6 +255,22 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS income_projections (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      amount REAL NOT NULL,
+      frequency TEXT NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT,
+      account_id TEXT,
+      note TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE SET NULL
+    )
+  `);
+
   // Drop indexes that still carry the pre-rename names -- RENAME COLUMN/TABLE keeps them
   // functional under their old names, so leaving them in place would just leave a stale-named
   // duplicate sitting alongside the newly (re)created one below.
@@ -274,6 +290,7 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
   db.run(`CREATE INDEX IF NOT EXISTS idx_reconciliations_date ON reconciliations(as_of_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_obligation_line_items_obligation ON obligation_line_items(obligation_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_obligation_line_items_target_date ON obligation_line_items(target_date)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_income_projections_start_date ON income_projections(start_date)`);
 
   saveDatabase(db, dbPath);
 
