@@ -21,6 +21,7 @@ import { BalanceService } from './database/balanceService';
 import { HelocSettingsService } from './database/helocSettingsService';
 import { ReconciliationService } from './database/reconciliationService';
 import { ReserveService } from './database/reserveService';
+import { setupApplicationMenu, attachContextMenu } from './menu';
 import { CreateAccountInput, UpdateAccountInput } from '../shared/types/account';
 import { CreateTransactionInput, UpdateTransactionInput } from '../shared/types/transaction';
 import { CreateImportRuleInput, UpdateImportRuleInput } from '../shared/types/importRule';
@@ -107,6 +108,8 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  attachContextMenu(mainWindow);
 }
 
 function setupAutoUpdater() {
@@ -229,6 +232,7 @@ app.whenReady().then(async () => {
 
   registerIPCHandlers();
 
+  setupApplicationMenu();
   createWindow();
   appInitialized = true;
   setupAutoUpdater();
