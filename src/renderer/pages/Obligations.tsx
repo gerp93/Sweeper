@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Reserve, ReserveLineItem } from '../../shared/types/reserve';
+import { Obligation, ObligationLineItem } from '../../shared/types/obligation';
 import { Account } from '../../shared/types/account';
 import { SpendableBalance } from '../../shared/types/balanceAnchor';
 import CurrencyInput from '../components/CurrencyInput';
@@ -23,15 +23,15 @@ function Countdown({ targetDate, remaining, today }: { targetDate: string | null
   return <span className={days < 0 ? 'amount-negative' : 'text-muted'}>{countdownText(days)}</span>;
 }
 
-export default function Reserves() {
-  const [reserves, setReserves] = useState<Reserve[]>([]);
+export default function Obligations() {
+  const [obligations, setObligations] = useState<Obligation[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [spendable, setSpendable] = useState<SpendableBalance | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Reserve-level fields (label/note/account/auto-allocate). Amount and target date now
-  // live on line items -- only the "new reserve" form collects a starter one.
+  // Obligation-level fields (label/note/account/auto-allocate). Amount and target date now
+  // live on line items -- only the "new obligation" form collects a starter one.
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [label, setLabel] = useState('');
@@ -43,11 +43,11 @@ export default function Reserves() {
   const [saving, setSaving] = useState(false);
 
   // Read-only "show me the individual amounts" toggle on the page itself -- editing only
-  // happens inside the Edit Reserve modal.
+  // happens inside the Edit Obligation modal.
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Add/edit line item mini-form, shown inside the Edit Reserve modal for whichever
-  // reserve is currently being edited.
+  // Add/edit line item mini-form, shown inside the Edit Obligation modal for whichever
+  // obligation is currently being edited.
   const [liEditingId, setLiEditingId] = useState<string | null>(null);
   const [liFormOpen, setLiFormOpen] = useState(false);
   const [liLabel, setLiLabel] = useState('');
@@ -63,11 +63,11 @@ export default function Reserves() {
   async function load() {
     setLoading(true);
     const [list, accts, balance] = await Promise.all([
-      window.electronAPI.reserves.getAll(),
+      window.electronAPI.obligations.getAll(),
       window.electronAPI.accounts.getAll(),
       window.electronAPI.balance.getSpendable(),
     ]);
-    setReserves(list);
+    setObligations(list);
     setAccounts(accts);
     setSpendable(balance);
     setLoading(false);
@@ -98,13 +98,13 @@ export default function Reserves() {
     setError(null);
   }
 
-  function startEdit(reserve: Reserve) {
+  function startEdit(obligation: Obligation) {
     setModalOpen(true);
-    setEditingId(reserve.id);
-    setLabel(reserve.label);
-    setNote(reserve.note ?? '');
-    setAccountId(reserve.accountId ?? '');
-    setAutoAllocate(reserve.autoAllocate);
+    setEditingId(obligation.id);
+    setLabel(obligation.label);
+    setNote(obligation.note ?? '');
+    setAccountId(obligation.accountId ?? '');
+    setAutoAllocate(obligation.autoAllocate);
     setError(null);
   }
 
@@ -118,14 +118,14 @@ export default function Reserves() {
     setError(null);
     try {
       if (editingId) {
-        await window.electronAPI.reserves.update(editingId, {
+        await window.electronAPI.obligations.update(editingId, {
           label: label.trim(),
           note: note.trim() || null,
           accountId: accountId || null,
           autoAllocate: accountId ? autoAllocate : false,
         });
       } else {
-        await window.electronAPI.reserves.create({
+        await window.electronAPI.obligations.create({
           label: label.trim(),
           note: note.trim() || null,
           accountId: accountId || null,
@@ -143,9 +143,9 @@ export default function Reserves() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Delete this reserve and all its line items? Any transactions allocated to it are unaffected.'))
+    if (!confirm('Delete this obligation and all its line items? Any transactions allocated to it are unaffected.'))
       return;
-    await window.electronAPI.reserves.delete(id);
+    await window.electronAPI.obligations.delete(id);
     if (editingId === id) resetForm();
     if (expandedId === id) setExpandedId(null);
     await load();
@@ -156,8 +156,8 @@ export default function Reserves() {
     return accounts.find((a) => a.id === id)?.friendlyName ?? null;
   }
 
-  function toggleExpand(reserveId: string) {
-    setExpandedId((prev) => (prev === reserveId ? null : reserveId));
+  function toggleExpand(obligationId: string) {
+    setExpandedId((prev) => (prev === obligationId ? null : obligationId));
   }
 
   function closeLiForm() {
@@ -178,7 +178,7 @@ export default function Reserves() {
     setLiError(null);
   }
 
-  function openEditLineItem(item: ReserveLineItem) {
+  function openEditLineItem(item: ObligationLineItem) {
     setLiFormOpen(true);
     setLiEditingId(item.id);
     setLiLabel(item.label ?? '');
@@ -201,9 +201,9 @@ export default function Reserves() {
         targetDate: liTargetDate || null,
       };
       if (liEditingId) {
-        await window.electronAPI.reserveLineItems.update(liEditingId, input);
+        await window.electronAPI.obligationLineItems.update(liEditingId, input);
       } else {
-        await window.electronAPI.reserveLineItems.create(editingId, input);
+        await window.electronAPI.obligationLineItems.create(editingId, input);
       }
       closeLiForm();
       await load();
@@ -216,36 +216,36 @@ export default function Reserves() {
 
   async function deleteLineItem(id: string) {
     if (!confirm('Delete this line item?')) return;
-    await window.electronAPI.reserveLineItems.delete(id);
+    await window.electronAPI.obligationLineItems.delete(id);
     if (liEditingId === id) closeLiForm();
     await load();
   }
 
   async function moveLineItem(id: string, direction: 'up' | 'down') {
-    await window.electronAPI.reserveLineItems.move(id, direction);
+    await window.electronAPI.obligationLineItems.move(id, direction);
     await load();
   }
 
   const today = todayIso();
-  const totalReserved = reserves.reduce((sum, r) => sum + r.remaining, 0);
-  const trulyAvailable = spendable ? spendable.balance - totalReserved : null;
-  const editingReserve = editingId ? reserves.find((r) => r.id === editingId) ?? null : null;
+  const totalObligated = obligations.reduce((sum, o) => sum + o.remaining, 0);
+  const trulyAvailable = spendable ? spendable.balance - totalObligated : null;
+  const editingObligation = editingId ? obligations.find((o) => o.id === editingId) ?? null : null;
 
   return (
     <div>
       <div className="page-header">
-        <h1>Reserves</h1>
+        <h1>Obligations</h1>
         <button className="btn btn-primary" onClick={startAdd}>
-          + New Reserve
+          + New Obligation
         </button>
       </div>
 
       <p className="text-muted" style={{ marginTop: -8, fontSize: 13, maxWidth: 720 }}>
-        Reserves are dollars inside your HELOC spendable balance that are already spoken for — set aside on paper
-        for future payments, like deferred-interest balances coming due — so they don't get swept up in everyday
-        spending. A reserve can hold several target amounts (say, three same-day store-card purchases that each
+        Obligations are dollars inside your HELOC spendable balance that are already spoken for — held back for
+        future payments, like deferred-interest balances coming due — so they don't get swept up in everyday
+        spending. An obligation can hold several target amounts (say, three same-day store-card purchases that each
         carry their own promo payoff date) — amounts due the same date are shown combined. When a payment is
-        allocated to the reserve, it pays down whichever target is first in line, in the order you set in Edit.
+        allocated to the obligation, it pays down whichever target is first in line, in the order you set in Edit.
       </p>
 
       <div className="stat-row" style={{ marginTop: 12, marginBottom: 20 }}>
@@ -254,8 +254,8 @@ export default function Reserves() {
           <div className="stat-value">{spendable ? formatCurrency(spendable.balance) : '—'}</div>
         </div>
         <div className="card">
-          <div className="stat-label">Total Reserved</div>
-          <div className="stat-value">{formatCurrency(totalReserved)}</div>
+          <div className="stat-label">Total Obligated</div>
+          <div className="stat-value">{formatCurrency(totalObligated)}</div>
         </div>
         <div className="card">
           <div className="stat-label">Truly Available</div>
@@ -267,24 +267,24 @@ export default function Reserves() {
 
       {loading ? (
         <div className="card empty-state">Loading…</div>
-      ) : reserves.length === 0 ? (
-        <div className="card empty-state">No reserves set aside yet.</div>
+      ) : obligations.length === 0 ? (
+        <div className="card empty-state">No obligations set up yet.</div>
       ) : (
-        reserves.map((r) => {
-          const overdue = r.dateGroups.some((g) => g.targetDate != null && g.targetDate < today && g.remaining > 0);
-          const fulfilled = r.remaining <= 0;
-          const linkedAccountName = accountName(r.accountId);
-          const expanded = expandedId === r.id;
-          const hasMultipleLineItems = r.lineItems.length > 1;
+        obligations.map((o) => {
+          const overdue = o.dateGroups.some((g) => g.targetDate != null && g.targetDate < today && g.remaining > 0);
+          const fulfilled = o.remaining <= 0;
+          const linkedAccountName = accountName(o.accountId);
+          const expanded = expandedId === o.id;
+          const hasMultipleLineItems = o.lineItems.length > 1;
 
-          const singleGroup = r.dateGroups.length === 1 ? r.dateGroups[0] : null;
+          const singleGroup = o.dateGroups.length === 1 ? o.dateGroups[0] : null;
 
           return (
-            <div className="card" key={r.id} style={{ marginBottom: 16 }}>
+            <div className="card" key={o.id} style={{ marginBottom: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 15 }}>
-                    {r.label}
+                    {o.label}
                     {fulfilled && (
                       <span className="pill pill-included" style={{ marginLeft: 8 }}>
                         Fulfilled
@@ -298,19 +298,19 @@ export default function Reserves() {
                   </div>
                   <div className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>
                     {linkedAccountName ? `Linked to ${linkedAccountName}` : 'No linked account'}
-                    {linkedAccountName && r.autoAllocate && (
+                    {linkedAccountName && o.autoAllocate && (
                       <span className="pill pill-included" style={{ marginLeft: 6 }}>
                         Auto
                       </span>
                     )}
-                    {r.note && <> · {r.note}</>}
+                    {o.note && <> · {o.note}</>}
                   </div>
                 </div>
                 <div className="ledger-actions">
-                  <button className="btn-link" onClick={() => startEdit(r)}>
+                  <button className="btn-link" onClick={() => startEdit(o)}>
                     Edit
                   </button>
-                  <button className="btn-link btn-link-danger" onClick={() => handleDelete(r.id)}>
+                  <button className="btn-link btn-link-danger" onClick={() => handleDelete(o.id)}>
                     Delete
                   </button>
                 </div>
@@ -332,7 +332,7 @@ export default function Reserves() {
               ) : (
                 <>
                   <div style={{ marginTop: 10, fontWeight: 600 }}>
-                    Total: <span className={fulfilled ? 'amount-positive' : undefined}>{formatCurrency(r.remaining)}</span>
+                    Total: <span className={fulfilled ? 'amount-positive' : undefined}>{formatCurrency(o.remaining)}</span>
                   </div>
                   <table className="data-table" style={{ marginTop: 8 }}>
                     <thead>
@@ -343,7 +343,7 @@ export default function Reserves() {
                       </tr>
                     </thead>
                     <tbody>
-                      {r.dateGroups.map((g) => {
+                      {o.dateGroups.map((g) => {
                         const groupOverdue = g.targetDate != null && g.targetDate < today && g.remaining > 0;
                         return (
                           <tr key={g.targetDate ?? '__none__'}>
@@ -367,8 +367,8 @@ export default function Reserves() {
 
               {hasMultipleLineItems && (
                 <>
-                  <button className="btn-link" style={{ marginTop: 8 }} onClick={() => toggleExpand(r.id)}>
-                    {expanded ? 'Hide individual amounts ▲' : `Show individual amounts (${r.lineItems.length}) ▾`}
+                  <button className="btn-link" style={{ marginTop: 8 }} onClick={() => toggleExpand(o.id)}>
+                    {expanded ? 'Hide individual amounts ▲' : `Show individual amounts (${o.lineItems.length}) ▾`}
                   </button>
 
                   {expanded && (
@@ -381,7 +381,7 @@ export default function Reserves() {
                         </tr>
                       </thead>
                       <tbody>
-                        {r.lineItems.map((item) => (
+                        {o.lineItems.map((item) => (
                           <tr key={item.id}>
                             <td>{item.label ?? '—'}</td>
                             <td style={{ textAlign: 'right' }} className={item.remaining <= 0 ? 'amount-positive' : undefined}>
@@ -403,7 +403,7 @@ export default function Reserves() {
       {modalOpen && (
         <div className="modal-backdrop" onClick={resetForm}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>{editingId ? 'Edit Reserve' : 'New Reserve'}</h2>
+            <h2>{editingId ? 'Edit Obligation' : 'New Obligation'}</h2>
 
             <div className="field">
               <label>Label</label>
@@ -430,7 +430,7 @@ export default function Reserves() {
                   <input type="date" value={firstTargetDate} onChange={(e) => setFirstTargetDate(e.target.value)} />
                 </div>
                 <p className="text-muted" style={{ fontSize: 12, marginTop: -8 }}>
-                  You can add more target amounts (with their own dates) after creating the reserve.
+                  You can add more target amounts (with their own dates) after creating the obligation.
                 </p>
               </>
             )}
@@ -455,17 +455,17 @@ export default function Reserves() {
                   disabled={!accountId}
                   onChange={(e) => setAutoAllocate(e.target.checked)}
                 />
-                Auto-allocate future transactions on this account to this reserve
+                Auto-allocate future transactions on this account to this obligation
               </label>
               {!accountId && (
                 <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
                   Link an account above to enable this — new transactions on that account (manual or imported) will
-                  be suggested or auto-assigned to this reserve.
+                  be suggested or auto-assigned to this obligation.
                 </p>
               )}
             </div>
 
-            {editingReserve && (
+            {editingObligation && (
               <div className="field">
                 <label>Target Amounts</label>
                 <p className="text-muted" style={{ fontSize: 12, marginTop: -4 }}>
@@ -483,7 +483,7 @@ export default function Reserves() {
                     </tr>
                   </thead>
                   <tbody>
-                    {editingReserve.lineItems.map((item, idx) => (
+                    {editingObligation.lineItems.map((item, idx) => (
                       <tr key={item.id}>
                         <td style={{ whiteSpace: 'nowrap' }}>
                           <button
@@ -496,7 +496,7 @@ export default function Reserves() {
                           </button>
                           <button
                             className="btn-link"
-                            disabled={idx === editingReserve.lineItems.length - 1}
+                            disabled={idx === editingObligation.lineItems.length - 1}
                             onClick={() => moveLineItem(item.id, 'down')}
                             title="Move down (pay off later)"
                           >
@@ -566,7 +566,7 @@ export default function Reserves() {
                 Cancel
               </button>
               <button className="btn btn-primary" disabled={!canSave} onClick={handleSave}>
-                {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Reserve'}
+                {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Obligation'}
               </button>
             </div>
           </div>

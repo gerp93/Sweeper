@@ -1,6 +1,6 @@
-export interface ReserveLineItem {
+export interface ObligationLineItem {
   id: string;
-  reserveId: string;
+  obligationId: string;
   label: string | null;
   amount: number;
   targetDate: string | null;
@@ -11,38 +11,38 @@ export interface ReserveLineItem {
   updatedAt: string;
 }
 
-export interface CreateReserveLineItemInput {
+export interface CreateObligationLineItemInput {
   label?: string | null;
   amount: number;
   targetDate?: string | null;
   priority?: number;
 }
 
-export interface UpdateReserveLineItemInput {
+export interface UpdateObligationLineItemInput {
   label?: string | null;
   amount?: number;
   targetDate?: string | null;
   priority?: number;
 }
 
-// One row per distinct target date across a reserve's line items, amounts summed --
+// One row per distinct target date across an obligation's line items, amounts summed --
 // several same-day promo balances (e.g. three items bought the same day on a store
 // card) collapse into a single displayed row.
-export interface ReserveDateGroup {
+export interface ObligationDateGroup {
   targetDate: string | null;
   amount: number;
   allocated: number;
   remaining: number;
 }
 
-export interface Reserve {
+export interface Obligation {
   id: string;
   label: string;
   note: string | null;
   accountId: string | null;
   autoAllocate: boolean;
-  lineItems: ReserveLineItem[];
-  dateGroups: ReserveDateGroup[];
+  lineItems: ObligationLineItem[];
+  dateGroups: ObligationDateGroup[];
   amount: number;
   allocated: number;
   remaining: number;
@@ -50,15 +50,15 @@ export interface Reserve {
   updatedAt: string;
 }
 
-export interface CreateReserveInput {
+export interface CreateObligationInput {
   label: string;
   note?: string | null;
   accountId?: string | null;
   autoAllocate?: boolean;
-  lineItems: CreateReserveLineItemInput[];
+  lineItems: CreateObligationLineItemInput[];
 }
 
-export interface UpdateReserveInput {
+export interface UpdateObligationInput {
   label?: string;
   note?: string | null;
   accountId?: string | null;

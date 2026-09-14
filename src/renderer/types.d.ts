@@ -6,12 +6,12 @@ import { BalanceAnchor, CreateBalanceAnchorInput, SpendableBalance } from '../sh
 import { HelocSettings, UpdateHelocSettingsInput } from '../shared/types/helocSettings';
 import { Reconciliation, CreateReconciliationInput } from '../shared/types/reconciliation';
 import {
-  Reserve,
-  CreateReserveInput,
-  UpdateReserveInput,
-  CreateReserveLineItemInput,
-  UpdateReserveLineItemInput,
-} from '../shared/types/reserve';
+  Obligation,
+  CreateObligationInput,
+  UpdateObligationInput,
+  CreateObligationLineItemInput,
+  UpdateObligationLineItemInput,
+} from '../shared/types/obligation';
 
 declare global {
   interface Window {
@@ -65,18 +65,18 @@ declare global {
         create: (input: CreateReconciliationInput) => Promise<Reconciliation>;
         delete: (id: string) => Promise<{ success: boolean }>;
       };
-      reserves: {
-        getAll: () => Promise<Reserve[]>;
+      obligations: {
+        getAll: () => Promise<Obligation[]>;
         getTotal: () => Promise<number>;
-        create: (input: CreateReserveInput) => Promise<Reserve>;
-        update: (id: string, input: UpdateReserveInput) => Promise<Reserve>;
+        create: (input: CreateObligationInput) => Promise<Obligation>;
+        update: (id: string, input: UpdateObligationInput) => Promise<Obligation>;
         delete: (id: string) => Promise<{ success: boolean }>;
       };
-      reserveLineItems: {
-        create: (reserveId: string, input: CreateReserveLineItemInput) => Promise<Reserve>;
-        update: (id: string, input: UpdateReserveLineItemInput) => Promise<Reserve>;
-        delete: (id: string) => Promise<Reserve>;
-        move: (id: string, direction: 'up' | 'down') => Promise<Reserve>;
+      obligationLineItems: {
+        create: (obligationId: string, input: CreateObligationLineItemInput) => Promise<Obligation>;
+        update: (id: string, input: UpdateObligationLineItemInput) => Promise<Obligation>;
+        delete: (id: string) => Promise<Obligation>;
+        move: (id: string, direction: 'up' | 'down') => Promise<Obligation>;
       };
       dbLocation: {
         get: () => Promise<{ path: string; isDefault: boolean; defaultPath: string }>;
