@@ -302,17 +302,19 @@ export class ProjectionService {
     };
   }
 
-  // One point per month-end for the next `months` months, so the UI can render a table in a
-  // single call instead of one round trip per month.
+  // One point per month-end, starting with the current (partial) month through the next
+  // `months` months, so the UI can render a table in a single call instead of one round trip
+  // per month.
   getProjectionSeries(months: number, excludedIds: string[] = []): ProjectionSeriesPoint[] {
     const today = new Date().toISOString().slice(0, 10);
     const [y, m] = today.split('-').map(Number);
     const points: ProjectionSeriesPoint[] = [];
 
-    for (let i = 1; i <= months; i++) {
+    for (let i = 0; i <= months; i++) {
       const totalMonths = (m - 1) + i;
       const targetYear = y + Math.floor(totalMonths / 12);
       const targetMonth = totalMonths % 12; // 0-indexed
+      const monthStart = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-01`;
       const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
       const monthEnd = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
       const monthLabel = new Date(Date.UTC(targetYear, targetMonth, 1)).toLocaleDateString('en-US', {
@@ -321,7 +323,9 @@ export class ProjectionService {
         timeZone: 'UTC',
       });
 
-      points.push({ ...this.getProjectedBalance(monthEnd, excludedIds), monthLabel });
+      const obligationsDueThisMonth = this.obligationsPaidBy(monthEnd) - this.obligationsPaidBy(addDays(monthStart, -1));
+
+      points.push({ ...this.getProjectedBalance(monthEnd, excludedIds), monthLabel, obligationsDueThisMonth });
     }
 
     return points;

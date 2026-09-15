@@ -61,4 +61,7 @@ export interface ProjectedBalancePoint {
 
 export interface ProjectionSeriesPoint extends ProjectedBalancePoint {
   monthLabel: string;
+  // Obligation dollars whose due date falls within this calendar month specifically (not
+  // cumulative like obligationsPaidByDate), using current remaining amounts.
+  obligationsDueThisMonth: number;
 }
