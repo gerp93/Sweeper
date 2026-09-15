@@ -538,19 +538,21 @@ export default function Transactions() {
                         </td>
                         <td style={{ textAlign: 'right' }}>{formatCurrency(balance)}</td>
                         <td>{renderReconciledCell(tx)}</td>
-                        <td className="ledger-actions">
-                          <button
-                            className="btn-link"
-                            onClick={() => {
-                              setEditing(tx);
-                              setShowForm(true);
-                            }}
-                          >
-                            Edit
-                          </button>
-                          <button className="btn-link btn-link-danger" onClick={() => handleDelete(tx.id)}>
-                            Delete
-                          </button>
+                        <td>
+                          <div className="ledger-actions">
+                            <button
+                              className="btn-link"
+                              onClick={() => {
+                                setEditing(tx);
+                                setShowForm(true);
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button className="btn-link btn-link-danger" onClick={() => handleDelete(tx.id)}>
+                              Delete
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -618,19 +620,21 @@ export default function Transactions() {
                       {formatCurrency(tx.amount)}
                     </td>
                     <td>{renderReconciledCell(tx)}</td>
-                    <td className="ledger-actions">
-                      <button
-                        className="btn-link"
-                        onClick={() => {
-                          setEditing(tx);
-                          setShowForm(true);
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button className="btn-link btn-link-danger" onClick={() => handleDelete(tx.id)}>
-                        Delete
-                      </button>
+                    <td>
+                      <div className="ledger-actions">
+                        <button
+                          className="btn-link"
+                          onClick={() => {
+                            setEditing(tx);
+                            setShowForm(true);
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button className="btn-link btn-link-danger" onClick={() => handleDelete(tx.id)}>
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

@@ -88,22 +88,24 @@ export default function Rules() {
                       {rule.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  <td style={{ display: 'flex', gap: 6 }}>
-                    <button className="btn" onClick={() => toggleActive(rule)}>
-                      {rule.isActive ? 'Deactivate' : 'Activate'}
-                    </button>
-                    <button
-                      className="btn"
-                      onClick={() => {
-                        setEditing(rule);
-                        setShowForm(true);
-                      }}
-                    >
-                      Edit
-                    </button>
-                    <button className="btn btn-danger" onClick={() => handleDelete(rule.id)}>
-                      Delete
-                    </button>
+                  <td>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn" onClick={() => toggleActive(rule)}>
+                        {rule.isActive ? 'Deactivate' : 'Activate'}
+                      </button>
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          setEditing(rule);
+                          setShowForm(true);
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button className="btn btn-danger" onClick={() => handleDelete(rule.id)}>
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

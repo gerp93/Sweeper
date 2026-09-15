@@ -53,10 +53,12 @@ export default function ManageAliasesForm({ account, aliases, onAdd, onDelete, o
               {aliases.map((a) => (
                 <tr key={a.id}>
                   <td>{a.rawName}</td>
-                  <td className="ledger-actions" style={{ width: 1 }}>
-                    <button className="btn-link btn-link-danger" onClick={() => onDelete(a.id)}>
-                      Delete
-                    </button>
+                  <td style={{ width: 1 }}>
+                    <div className="ledger-actions">
+                      <button className="btn-link btn-link-danger" onClick={() => onDelete(a.id)}>
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

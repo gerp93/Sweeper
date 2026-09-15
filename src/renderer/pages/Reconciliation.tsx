@@ -176,10 +176,12 @@ export default function ReconciliationPage() {
                     {formatCurrency(r.difference)}
                   </td>
                   <td>{r.note ?? '—'}</td>
-                  <td className="ledger-actions">
-                    <button className="btn-link btn-link-danger" onClick={() => handleDelete(r.id)}>
-                      Delete
-                    </button>
+                  <td>
+                    <div className="ledger-actions">
+                      <button className="btn-link btn-link-danger" onClick={() => handleDelete(r.id)}>
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
