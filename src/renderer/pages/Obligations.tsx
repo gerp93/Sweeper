@@ -508,13 +508,15 @@ export default function Obligations() {
                           {formatCurrency(item.remaining)}
                         </td>
                         <td>{item.targetDate ? formatDate(item.targetDate) : '—'}</td>
-                        <td className="ledger-actions">
-                          <button className="btn-link" onClick={() => openEditLineItem(item)}>
-                            Edit
-                          </button>
-                          <button className="btn-link btn-link-danger" onClick={() => deleteLineItem(item.id)}>
-                            Delete
-                          </button>
+                        <td>
+                          <div className="ledger-actions">
+                            <button className="btn-link" onClick={() => openEditLineItem(item)}>
+                              Edit
+                            </button>
+                            <button className="btn-link btn-link-danger" onClick={() => deleteLineItem(item.id)}>
+                              Delete
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

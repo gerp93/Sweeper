@@ -171,19 +171,21 @@ export default function Accounts() {
                       <td className="text-muted" style={{ textAlign: 'right' }}>
                         {txCounts.get(a.id) ?? 0}
                       </td>
-                      <td style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn" onClick={() => setManagingAliasesFor(a)}>
-                          Aliases
-                        </button>
-                        <button className="btn" onClick={() => setEditing(a)}>
-                          Rename
-                        </button>
-                        <button className="btn" onClick={() => setMerging(a)}>
-                          Merge into…
-                        </button>
-                        <button className="btn btn-danger" onClick={() => handleDelete(a.id)}>
-                          Delete
-                        </button>
+                      <td>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button className="btn" onClick={() => setManagingAliasesFor(a)}>
+                            Aliases
+                          </button>
+                          <button className="btn" onClick={() => setEditing(a)}>
+                            Rename
+                          </button>
+                          <button className="btn" onClick={() => setMerging(a)}>
+                            Merge into…
+                          </button>
+                          <button className="btn btn-danger" onClick={() => handleDelete(a.id)}>
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

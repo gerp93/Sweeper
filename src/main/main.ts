@@ -230,7 +230,7 @@ app.whenReady().then(async () => {
   helocSettingsService = new HelocSettingsService(db);
   reconciliationService = new ReconciliationService(db, balanceService);
   obligationService = new ObligationService(db);
-  projectionService = new ProjectionService(db, balanceService, obligationService);
+  projectionService = new ProjectionService(db, balanceService, obligationService, transactionService);
 
   importRuleService.seedDefaultRules();
 
