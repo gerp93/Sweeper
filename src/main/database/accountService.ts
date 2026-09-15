@@ -10,7 +10,6 @@ function rowToAccount(columns: string[], row: any[]): Account {
   });
   return {
     id: obj.id,
-    rawName: obj.rawName,
     friendlyName: obj.friendlyName,
     createdAt: obj.createdAt,
     updatedAt: obj.updatedAt,
@@ -19,7 +18,6 @@ function rowToAccount(columns: string[], row: any[]): Account {
 
 const SELECT_COLUMNS = `
   id,
-  raw_name as rawName,
   friendly_name as friendlyName,
   created_at as createdAt,
   updated_at as updatedAt
@@ -42,22 +40,16 @@ export class AccountService {
     return account;
   }
 
-  getAccountByRawName(rawName: string): Account | null {
-    const stmt = this.db.prepare(`SELECT ${SELECT_COLUMNS} FROM accounts WHERE raw_name = ?`);
-    stmt.bind([rawName]);
-    const account = stmt.step() ? rowToAccount(stmt.getColumnNames(), stmt.get()) : null;
-    stmt.free();
-    return account;
-  }
-
   createAccount(input: CreateAccountInput): Account {
     const id = uuidv4();
     const now = new Date().toISOString();
 
-    this.db.run(
-      `INSERT INTO accounts (id, raw_name, friendly_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-      [id, input.rawName, input.friendlyName, now, now]
-    );
+    this.db.run(`INSERT INTO accounts (id, friendly_name, created_at, updated_at) VALUES (?, ?, ?, ?)`, [
+      id,
+      input.friendlyName,
+      now,
+      now,
+    ]);
 
     saveDatabase(this.db);
 
@@ -74,10 +66,6 @@ export class AccountService {
     const updates: string[] = [];
     const params: any[] = [];
 
-    if (input.rawName !== undefined) {
-      updates.push('raw_name = ?');
-      params.push(input.rawName);
-    }
     if (input.friendlyName !== undefined) {
       updates.push('friendly_name = ?');
       params.push(input.friendlyName);
@@ -98,12 +86,11 @@ export class AccountService {
     saveDatabase(this.db);
   }
 
-  findOrCreateByRawName(rawName: string, friendlyName: string): Account {
-    const existing = this.getAccountByRawName(rawName);
-    if (existing) return existing;
-    return this.createAccount({ rawName, friendlyName });
-  }
-
+  // Reassigns the source account's aliases to the target (so every raw description that
+  // used to match the source keeps matching on future imports -- merging used to just
+  // delete them, which meant the next import of that description silently recreated the
+  // "duplicate" account the merge was supposed to get rid of), moves its transactions over,
+  // then removes the now-empty source account.
   mergeAccounts(sourceId: string, targetId: string, memo?: string | null): Account {
     if (sourceId === targetId) {
       throw new Error('Cannot merge an account into itself');
@@ -115,6 +102,8 @@ export class AccountService {
 
     const now = new Date().toISOString();
     const trimmedMemo = memo?.trim();
+
+    this.db.run(`UPDATE account_aliases SET account_id = ? WHERE account_id = ?`, [targetId, sourceId]);
 
     if (trimmedMemo) {
       // Only the transactions moving over from the source account get the memo appended --

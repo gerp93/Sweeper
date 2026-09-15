@@ -1,4 +1,5 @@
 import { Account } from '../../shared/types/account';
+import { AccountAlias } from '../../shared/types/accountAlias';
 import { ImportRule } from '../../shared/types/importRule';
 import { Transaction } from '../../shared/types/transaction';
 
@@ -101,9 +102,11 @@ export function findMatchingRule(
   return rules.find((rule) => rule.isActive && matchesRule(row, rule)) ?? null;
 }
 
-export function findAccountMatch(description: string, accounts: Account[]): Account | null {
+export function findAccountMatch(description: string, accounts: Account[], aliases: AccountAlias[]): Account | null {
   const normalized = description.trim().toLowerCase();
-  return accounts.find((a) => a.rawName.trim().toLowerCase() === normalized) ?? null;
+  const alias = aliases.find((a) => a.rawName.trim().toLowerCase() === normalized);
+  if (!alias) return null;
+  return accounts.find((a) => a.id === alias.accountId) ?? null;
 }
 
 export function isDuplicateTransaction(
@@ -162,6 +165,7 @@ export function parseStatementCSV(
   csvText: string,
   rules: ImportRule[],
   accounts: Account[],
+  aliases: AccountAlias[],
   existingTransactions: Transaction[]
 ): ParsedImportRow[] {
   const lines = csvText.split(/\r?\n/).filter((line) => line.trim().length > 0);
@@ -198,7 +202,7 @@ export function parseStatementCSV(
     const statementBalance = statementBalanceRaw ? parseAmount(statementBalanceRaw) : null;
 
     const matchedRule = findMatchingRule({ description, memo }, rules);
-    const matchedAccount = findAccountMatch(description, accounts);
+    const matchedAccount = findAccountMatch(description, accounts, aliases);
     const isDuplicate = isDuplicateTransaction({ date, description, amount, refCheck }, existingTransactions);
 
     rows.push({

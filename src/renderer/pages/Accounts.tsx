@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Account } from '../../shared/types/account';
+import { AccountAlias } from '../../shared/types/accountAlias';
 import { Transaction } from '../../shared/types/transaction';
 import AccountForm from '../components/AccountForm';
 import MergeAccountForm from '../components/MergeAccountForm';
+import ManageAliasesForm from '../components/ManageAliasesForm';
 import SuggestedMerges from '../components/SuggestedMerges';
 
 export default function Accounts() {
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [aliases, setAliases] = useState<AccountAlias[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [editing, setEditing] = useState<Account | null>(null);
   const [merging, setMerging] = useState<Account | null>(null);
+  const [managingAliasesFor, setManagingAliasesFor] = useState<Account | null>(null);
   const [loading, setLoading] = useState(true);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
@@ -21,11 +25,13 @@ export default function Accounts() {
 
   async function load() {
     setLoading(true);
-    const [accts, txs] = await Promise.all([
+    const [accts, aliasList, txs] = await Promise.all([
       window.electronAPI.accounts.getAll(),
+      window.electronAPI.accountAliases.getAll(),
       window.electronAPI.transactions.getAll(),
     ]);
     setAccounts(accts);
+    setAliases(aliasList);
     setTransactions(txs);
     setLoading(false);
   }
@@ -40,18 +46,13 @@ export default function Accounts() {
     setTimeout(() => setHighlightId((current) => (current === id ? null : current)), 2000);
   }
 
-  async function handleSave(friendlyName: string, rawName: string) {
+  async function handleSave(friendlyName: string) {
     if (!editing) return;
     const id = editing.id;
     try {
-      await window.electronAPI.accounts.update(id, { friendlyName, rawName });
+      await window.electronAPI.accounts.update(id, { friendlyName });
     } catch (err: any) {
-      const message = String(err?.message ?? err);
-      alert(
-        message.includes('UNIQUE constraint failed') && message.includes('raw_name')
-          ? `Couldn't save: another account already has that raw bank description.`
-          : `Couldn't save: ${message}`
-      );
+      alert(`Couldn't save: ${String(err?.message ?? err)}`);
       return;
     }
     setEditing(null);
@@ -73,6 +74,17 @@ export default function Accounts() {
     flash(targetId);
   }
 
+  async function handleAddAlias(rawName: string) {
+    if (!managingAliasesFor) return;
+    await window.electronAPI.accountAliases.create(managingAliasesFor.id, rawName);
+    await load();
+  }
+
+  async function handleDeleteAlias(id: string) {
+    await window.electronAPI.accountAliases.delete(id);
+    await load();
+  }
+
   const txCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const tx of transactions) {
@@ -80,6 +92,16 @@ export default function Accounts() {
     }
     return counts;
   }, [transactions]);
+
+  const aliasesByAccount = useMemo(() => {
+    const map = new Map<string, AccountAlias[]>();
+    for (const alias of aliases) {
+      const list = map.get(alias.accountId) ?? [];
+      list.push(alias);
+      map.set(alias.accountId, list);
+    }
+    return map;
+  }, [aliases]);
 
   return (
     <div>
@@ -107,9 +129,9 @@ export default function Accounts() {
       ) : (
         <div className="card">
           <p className="text-muted" style={{ marginTop: 0, fontSize: 13 }}>
-            Accounts are the entities money comes from or goes to. They're created automatically the first time a raw
-            bank description is imported — rename them here to something friendlier, and future imports with the same
-            raw description will keep matching.
+            Accounts are the entities money comes from or goes to. Each one can have several aliases — the raw bank
+            descriptions that match to it on import. Merging one account into another moves its aliases along with
+            it, so future imports keep matching correctly.
           </p>
           {loading ? (
             <div className="empty-state">Loading…</div>
@@ -120,38 +142,52 @@ export default function Accounts() {
               <thead>
                 <tr>
                   <th>Friendly Name</th>
-                  <th>Raw Bank Description</th>
+                  <th>Aliases</th>
                   <th style={{ textAlign: 'right' }}>Transactions</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {accounts.map((a) => (
-                  <tr
-                    key={a.id}
-                    ref={(el) => {
-                      rowRefs.current[a.id] = el;
-                    }}
-                    className={a.id === highlightId ? 'row-highlight' : undefined}
-                  >
-                    <td>{a.friendlyName}</td>
-                    <td className="text-muted">{a.rawName}</td>
-                    <td className="text-muted" style={{ textAlign: 'right' }}>
-                      {txCounts.get(a.id) ?? 0}
-                    </td>
-                    <td style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn" onClick={() => setEditing(a)}>
-                        Rename
-                      </button>
-                      <button className="btn" onClick={() => setMerging(a)}>
-                        Merge into…
-                      </button>
-                      <button className="btn btn-danger" onClick={() => handleDelete(a.id)}>
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {accounts.map((a) => {
+                  const accountAliases = aliasesByAccount.get(a.id) ?? [];
+                  return (
+                    <tr
+                      key={a.id}
+                      ref={(el) => {
+                        rowRefs.current[a.id] = el;
+                      }}
+                      className={a.id === highlightId ? 'row-highlight' : undefined}
+                    >
+                      <td>{a.friendlyName}</td>
+                      <td className="text-muted">
+                        {accountAliases.length === 0 ? (
+                          <span className="amount-negative">none — won't match on import</span>
+                        ) : accountAliases.length === 1 ? (
+                          accountAliases[0].rawName
+                        ) : (
+                          `${accountAliases[0].rawName} +${accountAliases.length - 1} more`
+                        )}
+                      </td>
+                      <td className="text-muted" style={{ textAlign: 'right' }}>
+                        {txCounts.get(a.id) ?? 0}
+                      </td>
+                      <td style={{ display: 'flex', gap: 6 }}>
+                        <button className="btn" onClick={() => setManagingAliasesFor(a)}>
+                          Aliases
+                        </button>
+                        <button className="btn" onClick={() => setEditing(a)}>
+                          Rename
+                        </button>
+                        <button className="btn" onClick={() => setMerging(a)}>
+                          Merge into…
+                        </button>
+                        <button className="btn btn-danger" onClick={() => handleDelete(a.id)}>
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -165,6 +201,15 @@ export default function Accounts() {
           otherAccounts={accounts.filter((a) => a.id !== merging.id)}
           onMerge={handleMerge}
           onCancel={() => setMerging(null)}
+        />
+      )}
+      {managingAliasesFor && (
+        <ManageAliasesForm
+          account={managingAliasesFor}
+          aliases={aliasesByAccount.get(managingAliasesFor.id) ?? []}
+          onAdd={handleAddAlias}
+          onDelete={handleDeleteAlias}
+          onClose={() => setManagingAliasesFor(null)}
         />
       )}
     </div>

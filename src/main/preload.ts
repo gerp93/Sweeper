@@ -18,14 +18,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   accounts: {
     getAll: () => ipcRenderer.invoke('accounts:getAll'),
     getById: (id: string) => ipcRenderer.invoke('accounts:getById', id),
-    getByRawName: (rawName: string) => ipcRenderer.invoke('accounts:getByRawName', rawName),
     create: (input: CreateAccountInput) => ipcRenderer.invoke('accounts:create', input),
     update: (id: string, input: UpdateAccountInput) => ipcRenderer.invoke('accounts:update', id, input),
     delete: (id: string) => ipcRenderer.invoke('accounts:delete', id),
-    findOrCreate: (rawName: string, friendlyName: string) =>
-      ipcRenderer.invoke('accounts:findOrCreate', rawName, friendlyName),
     merge: (sourceId: string, targetId: string, memo?: string | null) =>
       ipcRenderer.invoke('accounts:merge', sourceId, targetId, memo),
+  },
+
+  accountAliases: {
+    getAll: () => ipcRenderer.invoke('accountAliases:getAll'),
+    getForAccount: (accountId: string) => ipcRenderer.invoke('accountAliases:getForAccount', accountId),
+    create: (accountId: string, rawName: string) => ipcRenderer.invoke('accountAliases:create', accountId, rawName),
+    delete: (id: string) => ipcRenderer.invoke('accountAliases:delete', id),
   },
 
   transactions: {
@@ -96,8 +100,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     create: (input: CreateIncomeProjectionInput) => ipcRenderer.invoke('projections:create', input),
     update: (id: string, input: UpdateIncomeProjectionInput) => ipcRenderer.invoke('projections:update', id, input),
     delete: (id: string) => ipcRenderer.invoke('projections:delete', id),
-    getProjectedBalance: (targetDate: string) => ipcRenderer.invoke('projections:getProjectedBalance', targetDate),
-    getSeries: (months: number) => ipcRenderer.invoke('projections:getSeries', months),
+    getProjectedBalance: (targetDate: string, excludedIds?: string[]) =>
+      ipcRenderer.invoke('projections:getProjectedBalance', targetDate, excludedIds),
+    getSeries: (months: number, excludedIds?: string[]) =>
+      ipcRenderer.invoke('projections:getSeries', months, excludedIds),
   },
 
   dbLocation: {

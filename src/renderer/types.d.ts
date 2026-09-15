@@ -1,4 +1,5 @@
 import { Account, CreateAccountInput, UpdateAccountInput } from '../shared/types/account';
+import { AccountAlias } from '../shared/types/accountAlias';
 import { Transaction, CreateTransactionInput, UpdateTransactionInput } from '../shared/types/transaction';
 import { ImportRule, CreateImportRuleInput, UpdateImportRuleInput } from '../shared/types/importRule';
 import { ImportBatch, CreateImportBatchInput } from '../shared/types/importBatch';
@@ -26,12 +27,16 @@ declare global {
       accounts: {
         getAll: () => Promise<Account[]>;
         getById: (id: string) => Promise<Account | null>;
-        getByRawName: (rawName: string) => Promise<Account | null>;
         create: (input: CreateAccountInput) => Promise<Account>;
         update: (id: string, input: UpdateAccountInput) => Promise<Account>;
         delete: (id: string) => Promise<{ success: boolean }>;
-        findOrCreate: (rawName: string, friendlyName: string) => Promise<Account>;
         merge: (sourceId: string, targetId: string, memo?: string | null) => Promise<Account>;
+      };
+      accountAliases: {
+        getAll: () => Promise<AccountAlias[]>;
+        getForAccount: (accountId: string) => Promise<AccountAlias[]>;
+        create: (accountId: string, rawName: string) => Promise<AccountAlias>;
+        delete: (id: string) => Promise<{ success: boolean }>;
       };
       transactions: {
         getAll: () => Promise<Transaction[]>;
@@ -90,8 +95,8 @@ declare global {
         create: (input: CreateIncomeProjectionInput) => Promise<IncomeProjection>;
         update: (id: string, input: UpdateIncomeProjectionInput) => Promise<IncomeProjection>;
         delete: (id: string) => Promise<{ success: boolean }>;
-        getProjectedBalance: (targetDate: string) => Promise<ProjectedBalancePoint>;
-        getSeries: (months: number) => Promise<ProjectionSeriesPoint[]>;
+        getProjectedBalance: (targetDate: string, excludedIds?: string[]) => Promise<ProjectedBalancePoint>;
+        getSeries: (months: number, excludedIds?: string[]) => Promise<ProjectionSeriesPoint[]>;
       };
       dbLocation: {
         get: () => Promise<{ path: string; isDefault: boolean; defaultPath: string }>;

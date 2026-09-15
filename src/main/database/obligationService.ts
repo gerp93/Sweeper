@@ -146,10 +146,22 @@ export class ObligationService {
       ORDER BY created_at ASC
     `);
     if (results.length === 0) return [];
-    return results[0].values.map((row) => {
+    const obligations = results[0].values.map((row) => {
       const obj: any = {};
       results[0].columns.forEach((col, idx) => (obj[col] = row[idx]));
       return this.buildObligation({ ...obj, autoAllocate: Boolean(obj.autoAllocate) });
+    });
+
+    // Soonest due date first -- dateGroups is already sorted ascending with undated groups
+    // last, so each obligation's own earliest due date is just its first date group.
+    // Obligations with no dated amounts at all sort to the end.
+    return obligations.sort((a, b) => {
+      const aDate = a.dateGroups[0]?.targetDate ?? null;
+      const bDate = b.dateGroups[0]?.targetDate ?? null;
+      if (aDate === bDate) return 0;
+      if (aDate === null) return 1;
+      if (bDate === null) return -1;
+      return aDate < bDate ? -1 : 1;
     });
   }
 
