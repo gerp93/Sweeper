@@ -23,6 +23,7 @@ import { HelocSettingsService } from './database/helocSettingsService';
 import { ReconciliationService } from './database/reconciliationService';
 import { ObligationService } from './database/obligationService';
 import { ProjectionService } from './database/projectionService';
+import { RecurringBillService } from './database/recurringBillService';
 import { CreateAccountInput, UpdateAccountInput } from '../shared/types/account';
 import { CreateTransactionInput, UpdateTransactionInput } from '../shared/types/transaction';
 import { CreateImportRuleInput, UpdateImportRuleInput } from '../shared/types/importRule';
@@ -37,6 +38,7 @@ import {
   UpdateObligationLineItemInput,
 } from '../shared/types/obligation';
 import { CreateIncomeProjectionInput, UpdateIncomeProjectionInput, ProjectionScenarioOptions } from '../shared/types/projection';
+import { CreateRecurringBillInput, UpdateRecurringBillInput } from '../shared/types/recurringBill';
 import { Database } from 'sql.js';
 
 pinUserDataPath();
@@ -85,6 +87,7 @@ let helocSettingsService: HelocSettingsService;
 let reconciliationService: ReconciliationService;
 let obligationService: ObligationService;
 let projectionService: ProjectionService;
+let recurringBillService: RecurringBillService;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -230,7 +233,8 @@ app.whenReady().then(async () => {
   helocSettingsService = new HelocSettingsService(db);
   reconciliationService = new ReconciliationService(db, balanceService);
   obligationService = new ObligationService(db);
-  projectionService = new ProjectionService(db, balanceService, obligationService, transactionService);
+  recurringBillService = new RecurringBillService(db, transactionService);
+  projectionService = new ProjectionService(db, balanceService, obligationService, transactionService, recurringBillService);
 
   importRuleService.seedDefaultRules();
 
@@ -393,6 +397,28 @@ function registerIPCHandlers() {
     'projections:getSeries',
     (_, months: number, excludedIds?: string[], options?: ProjectionScenarioOptions) =>
       projectionService.getProjectionSeries(months, excludedIds, options)
+  );
+
+  // Recurring bill handlers
+  ipcMain.handle('recurringBills:getAll', () => recurringBillService.getAllBills());
+  ipcMain.handle('recurringBills:create', (_, input: CreateRecurringBillInput) =>
+    recurringBillService.createBill(input)
+  );
+  ipcMain.handle('recurringBills:update', (_, id: string, input: UpdateRecurringBillInput) =>
+    recurringBillService.updateBill(id, input)
+  );
+  ipcMain.handle('recurringBills:delete', (_, id: string) => {
+    recurringBillService.deleteBill(id);
+    return { success: true };
+  });
+  ipcMain.handle('recurringBills:getMonthlyOccurrences', (_, monthStart: string, monthEnd: string) =>
+    recurringBillService.getMonthlyBillOccurrences(monthStart, monthEnd)
+  );
+  ipcMain.handle('recurringBills:getExpectedTotal', (_, windowStart: string, windowEnd: string) =>
+    recurringBillService.getExpectedBillTotal(windowStart, windowEnd)
+  );
+  ipcMain.handle('recurringBills:findCandidateMatches', (_, transactionIds: string[]) =>
+    recurringBillService.findCandidateMatches(transactionIds)
   );
 
   // Database location handlers

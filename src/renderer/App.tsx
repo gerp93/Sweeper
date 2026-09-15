@@ -4,6 +4,7 @@ import Transactions from './pages/Transactions';
 import ReconciliationPage from './pages/Reconciliation';
 import Obligations from './pages/Obligations';
 import Projections from './pages/Projections';
+import RecurringBills from './pages/RecurringBills';
 import Accounts from './pages/Accounts';
 import Settings from './pages/Settings';
 import Layout from './components/Layout';
@@ -25,6 +26,7 @@ function App() {
               <Route path="/obligations" element={<Obligations />} />
               <Route path="/reserves" element={<Navigate to="/obligations" replace />} />
               <Route path="/projections" element={<Projections />} />
+              <Route path="/recurring-bills" element={<RecurringBills />} />
               <Route path="/accounts" element={<Accounts />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>

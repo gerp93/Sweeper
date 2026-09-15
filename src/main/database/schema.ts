@@ -334,6 +334,38 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
     // already exists
   }
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS recurring_bills (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      amount_mode TEXT NOT NULL DEFAULT 'fixed',
+      fixed_amount REAL,
+      frequency TEXT NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT,
+      account_id TEXT,
+      note TEXT,
+      last_day_of_month INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      amount_tolerance_type TEXT NOT NULL DEFAULT 'percent',
+      amount_tolerance REAL NOT NULL DEFAULT 0.15,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE SET NULL
+    )
+  `);
+
+  // Migration: recurring bill confirmation was added after transactions already shipped --
+  // add the link column to databases created before this change. Same pattern as
+  // obligation_id below: SQLite can't add a FK constraint retroactively via ALTER TABLE, so
+  // this column has no enforced FK on pre-existing databases -- RecurringBillService.deleteBill
+  // must explicitly null it out itself rather than relying on ON DELETE SET NULL.
+  try {
+    db.run(`ALTER TABLE transactions ADD COLUMN recurring_bill_id TEXT`);
+  } catch (e) {
+    // already exists
+  }
+
   // Drop indexes that still carry the pre-rename names -- RENAME COLUMN/TABLE keeps them
   // functional under their old names, so leaving them in place would just leave a stale-named
   // duplicate sitting alongside the newly (re)created one below.
@@ -348,12 +380,15 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_obligation ON transactions(obligation_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_recurring_bill ON transactions(recurring_bill_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_description ON transactions(description)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_balance_anchors_date ON balance_anchors(as_of_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_reconciliations_date ON reconciliations(as_of_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_obligation_line_items_obligation ON obligation_line_items(obligation_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_obligation_line_items_target_date ON obligation_line_items(target_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_income_projections_start_date ON income_projections(start_date)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_recurring_bills_start_date ON recurring_bills(start_date)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_recurring_bills_account ON recurring_bills(account_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_account_aliases_account ON account_aliases(account_id)`);
 
   saveDatabase(db, dbPath);

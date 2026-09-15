@@ -9,6 +9,7 @@ export interface Transaction {
   category: string | null;
   importBatchId: string | null;
   obligationId: string | null;
+  recurringBillId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -23,6 +24,7 @@ export interface CreateTransactionInput {
   category?: string | null;
   importBatchId?: string | null;
   obligationId?: string | null;
+  recurringBillId?: string | null;
 }
 
 export interface UpdateTransactionInput {
@@ -34,4 +36,5 @@ export interface UpdateTransactionInput {
   memo?: string | null;
   category?: string | null;
   obligationId?: string | null;
+  recurringBillId?: string | null;
 }

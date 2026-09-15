@@ -91,7 +91,7 @@ export default function Projections() {
   const [horizonMonths, setHorizonMonths] = useState(6);
   const [loading, setLoading] = useState(true);
   const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
-  const [burnMode, setBurnMode] = useState<'historical' | 'custom'>('historical');
+  const [burnMode, setBurnMode] = useState<'historical' | 'custom' | 'recurringBills'>('historical');
   const [customBurnEstimate, setCustomBurnEstimate] = useState('');
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -137,7 +137,7 @@ export default function Projections() {
   async function loadSeries(
     months: number,
     excluded: Set<string>,
-    mode: 'historical' | 'custom',
+    mode: 'historical' | 'custom' | 'recurringBills',
     customEstimate: string
   ) {
     const options: ProjectionScenarioOptions = {};
@@ -146,6 +146,8 @@ export default function Projections() {
       if (!isNaN(parsed) && parsed >= 0) {
         options.burnRateOverride = -Math.abs(parsed);
       }
+    } else if (mode === 'recurringBills') {
+      options.burnRateMode = 'recurringBills';
     }
     const result = await window.electronAPI.projections.getSeries(months, [...excluded], options);
     setSeries(result);
@@ -241,6 +243,8 @@ export default function Projections() {
 
   const lastPoint = series.length > 0 ? series[series.length - 1] : null;
   const shortfallPoint = series.find((p) => p.projectedSpendableBalance < 0) ?? null;
+  const parsedCustomBurn = parseFloat(customBurnEstimate);
+  const hasValidCustomEstimate = burnMode === 'custom' && !isNaN(parsedCustomBurn) && parsedCustomBurn >= 0;
 
   return (
     <div>
@@ -335,13 +339,31 @@ export default function Projections() {
                 {burnMode === 'custom' && (
                   <CurrencyInput value={customBurnEstimate} onChange={setCustomBurnEstimate} placeholder="e.g. $6,000.00" />
                 )}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input
+                    type="radio"
+                    name="burnMode"
+                    checked={burnMode === 'recurringBills'}
+                    onChange={() => setBurnMode('recurringBills')}
+                  />
+                  My Recurring Bills
+                </label>
               </div>
               <p className="text-muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
-                Assumes {formatCurrency(Math.abs(series[0]?.monthlyBurnRate ?? 0))}/mo ordinary spending (
-                {burnMode === 'custom'
-                  ? 'your custom estimate'
-                  : `trailing ${BURN_LOOKBACK_MONTHS}-month average, excluding accounts held back for an active Obligation`}
-                ) and Obligations paid in full on their due date.
+                {burnMode === 'recurringBills' ? (
+                  <>Assumes the sum of your active Recurring Bills' expected occurrences each month.</>
+                ) : (
+                  <>
+                    Assumes {formatCurrency(Math.abs(series[0]?.monthlyBurnRate ?? 0))}/mo ordinary spending (
+                    {hasValidCustomEstimate
+                      ? 'your custom estimate'
+                      : burnMode === 'custom'
+                        ? `enter an estimate above — showing the trailing ${BURN_LOOKBACK_MONTHS}-month average until you do`
+                        : `trailing ${BURN_LOOKBACK_MONTHS}-month average, excluding accounts held back for an active Obligation`}
+                    )
+                  </>
+                )}{' '}
+                and Obligations paid in full on their due date.
               </p>
             </div>
             <table className="data-table" style={{ marginTop: 8 }}>

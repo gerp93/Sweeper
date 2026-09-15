@@ -13,6 +13,7 @@ import {
   UpdateObligationLineItemInput,
 } from '../shared/types/obligation';
 import { CreateIncomeProjectionInput, UpdateIncomeProjectionInput, ProjectionScenarioOptions } from '../shared/types/projection';
+import { CreateRecurringBillInput, UpdateRecurringBillInput } from '../shared/types/recurringBill';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   accounts: {
@@ -104,6 +105,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('projections:getProjectedBalance', targetDate, excludedIds, options),
     getSeries: (months: number, excludedIds?: string[], options?: ProjectionScenarioOptions) =>
       ipcRenderer.invoke('projections:getSeries', months, excludedIds, options),
+  },
+
+  recurringBills: {
+    getAll: () => ipcRenderer.invoke('recurringBills:getAll'),
+    create: (input: CreateRecurringBillInput) => ipcRenderer.invoke('recurringBills:create', input),
+    update: (id: string, input: UpdateRecurringBillInput) => ipcRenderer.invoke('recurringBills:update', id, input),
+    delete: (id: string) => ipcRenderer.invoke('recurringBills:delete', id),
+    getMonthlyOccurrences: (monthStart: string, monthEnd: string) =>
+      ipcRenderer.invoke('recurringBills:getMonthlyOccurrences', monthStart, monthEnd),
+    getExpectedTotal: (windowStart: string, windowEnd: string) =>
+      ipcRenderer.invoke('recurringBills:getExpectedTotal', windowStart, windowEnd),
+    findCandidateMatches: (transactionIds: string[]) =>
+      ipcRenderer.invoke('recurringBills:findCandidateMatches', transactionIds),
   },
 
   dbLocation: {

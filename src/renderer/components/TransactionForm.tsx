@@ -2,24 +2,48 @@ import { useState } from 'react';
 import { Account } from '../../shared/types/account';
 import { CreateTransactionInput, Transaction } from '../../shared/types/transaction';
 import { Obligation } from '../../shared/types/obligation';
+import { RecurringBill } from '../../shared/types/recurringBill';
 import { todayIso, formatCurrency } from '../utils/format';
 
 interface Props {
   transaction?: Transaction;
   accounts: Account[];
   obligations: Obligation[];
+  recurringBills: RecurringBill[];
   defaultDate?: string;
+  // Prefill for a brand-new transaction (e.g. confirming a Recurring Bill's expected
+  // occurrence). Ignored when `transaction` is set (editing an existing real transaction).
+  defaultValues?: {
+    description?: string;
+    accountId?: string | null;
+    amount?: number;
+    recurringBillId?: string | null;
+  };
   onSave: (input: CreateTransactionInput) => void;
   onCancel: () => void;
 }
 
-export default function TransactionForm({ transaction, accounts, obligations, defaultDate, onSave, onCancel }: Props) {
+export default function TransactionForm({
+  transaction,
+  accounts,
+  obligations,
+  recurringBills,
+  defaultDate,
+  defaultValues,
+  onSave,
+  onCancel,
+}: Props) {
   const [date, setDate] = useState(transaction?.date ?? defaultDate ?? todayIso());
-  const [description, setDescription] = useState(transaction?.description ?? '');
-  const [accountId, setAccountId] = useState(transaction?.accountId ?? '');
-  const [amount, setAmount] = useState(transaction ? String(transaction.amount) : '');
+  const [description, setDescription] = useState(transaction?.description ?? defaultValues?.description ?? '');
+  const [accountId, setAccountId] = useState(transaction?.accountId ?? defaultValues?.accountId ?? '');
+  const [amount, setAmount] = useState(
+    transaction ? String(transaction.amount) : defaultValues?.amount != null ? String(defaultValues.amount) : ''
+  );
   const [memo, setMemo] = useState(transaction?.memo ?? '');
   const [obligationId, setObligationId] = useState(transaction?.obligationId ?? '');
+  const [recurringBillId, setRecurringBillId] = useState(
+    transaction?.recurringBillId ?? defaultValues?.recurringBillId ?? ''
+  );
 
   const parsedAmount = parseFloat(amount);
   const isValid = date.trim() !== '' && description.trim() !== '' && amount.trim() !== '' && !isNaN(parsedAmount);
@@ -84,6 +108,22 @@ export default function TransactionForm({ transaction, accounts, obligations, de
           <label>Memo (optional)</label>
           <input value={memo ?? ''} onChange={(e) => setMemo(e.target.value)} />
         </div>
+        <div className="field">
+          <label>Recurring Bill (optional)</label>
+          <select value={recurringBillId ?? ''} onChange={(e) => setRecurringBillId(e.target.value)}>
+            <option value="">(none)</option>
+            {recurringBills.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.label}
+              </option>
+            ))}
+          </select>
+          {transaction?.recurringBillId && (
+            <p className="text-muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+              Set to "(none)" to unlink this transaction from the Recurring Bill it's currently confirmed against.
+            </p>
+          )}
+        </div>
         <div className="modal-actions">
           <button className="btn" onClick={onCancel}>
             Cancel
@@ -99,6 +139,7 @@ export default function TransactionForm({ transaction, accounts, obligations, de
                 amount: parsedAmount,
                 memo: memo.trim() || null,
                 obligationId: obligationId || null,
+                recurringBillId: recurringBillId || null,
               })
             }
           >

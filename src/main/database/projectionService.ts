@@ -12,6 +12,7 @@ import { saveDatabase } from './schema';
 import { BalanceService } from './balanceService';
 import { ObligationService } from './obligationService';
 import { TransactionService } from './transactionService';
+import type { RecurringBillService } from './recurringBillService';
 
 function rowToProjection(columns: string[], row: any[]): IncomeProjection {
   const obj: any = {};
@@ -56,7 +57,7 @@ function isoFromUTC(dt: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-function addDays(dateStr: string, days: number): string {
+export function addDays(dateStr: string, days: number): string {
   const [y, m, d] = dateStr.split('-').map(Number);
   return isoFromUTC(new Date(Date.UTC(y, m - 1, d + days)));
 }
@@ -142,7 +143,8 @@ export class ProjectionService {
     private db: Database,
     private balanceService: BalanceService,
     private obligationService: ObligationService,
-    private transactionService: TransactionService
+    private transactionService: TransactionService,
+    private recurringBillService: RecurringBillService
   ) {}
 
   getAllProjections(): IncomeProjection[] {
@@ -309,8 +311,18 @@ export class ProjectionService {
           .reduce((sum, amount) => sum + amount, 0)
       : 0;
 
-    const monthlyBurnRate = options.burnRateOverride ?? this.getMonthlyBurnRate();
-    const projectedBurn = isFuture ? monthlyBurnRate * monthsBetween(today, targetDate) : 0;
+    let monthlyBurnRate: number;
+    let projectedBurn: number;
+    if (options.burnRateMode === 'recurringBills') {
+      // Real per-window expansion, not a flat monthly figure scaled by months elapsed -- a
+      // non-monthly bill (e.g. biweekly) would be misrepresented by that scaling.
+      projectedBurn = isFuture ? this.recurringBillService.getExpectedBillTotal(addDays(today, 1), targetDate) : 0;
+      const months = monthsBetween(today, targetDate);
+      monthlyBurnRate = months > 0 ? projectedBurn / months : 0;
+    } else {
+      monthlyBurnRate = options.burnRateOverride ?? this.getMonthlyBurnRate();
+      projectedBurn = isFuture ? monthlyBurnRate * monthsBetween(today, targetDate) : 0;
+    }
 
     const obligationsPaidByDate = this.obligationsPaidBy(targetDate);
     const totalObligated = this.obligationService.getTotalObligated();

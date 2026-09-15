@@ -4,6 +4,7 @@ import { AmountDateCollision, ParsedImportRow, findSameDayAmountCollisions, pars
 import { CreateTransactionInput, Transaction } from '../../shared/types/transaction';
 import { Obligation } from '../../shared/types/obligation';
 import { Account } from '../../shared/types/account';
+import { RecurringBill, RecurringBillMatchCandidate } from '../../shared/types/recurringBill';
 import { formatCurrency, formatDate } from '../utils/format';
 import Rules from './Rules';
 
@@ -36,6 +37,10 @@ export default function ImportTransactions() {
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ imported: number; skipped: number } | null>(null);
+  const [recurringBills, setRecurringBills] = useState<RecurringBill[]>([]);
+  const [pendingBillMatches, setPendingBillMatches] = useState<RecurringBillMatchCandidate[] | null>(null);
+  const [billChoices, setBillChoices] = useState<Record<string, string>>({});
+  const [confirmingBillTx, setConfirmingBillTx] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'import' | 'rules'>('import');
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -46,12 +51,13 @@ export default function ImportTransactions() {
 
     try {
       const text = await file.text();
-      const [rules, accts, aliases, existing, obligationList] = await Promise.all([
+      const [rules, accts, aliases, existing, obligationList, billList] = await Promise.all([
         window.electronAPI.importRules.getAll(),
         window.electronAPI.accounts.getAll(),
         window.electronAPI.accountAliases.getAll(),
         window.electronAPI.transactions.getAll(),
         window.electronAPI.obligations.getAll(),
+        window.electronAPI.recurringBills.getAll(),
       ]);
 
       const rows = parseStatementCSV(text, rules, accts, aliases, existing);
@@ -67,7 +73,10 @@ export default function ImportTransactions() {
       });
       setResolutions(initialResolutions);
       setObligations(obligationList);
+      setRecurringBills(billList);
       setPendingCollisions(null);
+      setPendingBillMatches(null);
+      setBillChoices({});
       setFileName(file.name);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -222,7 +231,9 @@ export default function ImportTransactions() {
         excludedCount: skippedCount,
       });
 
-      await window.electronAPI.transactions.createBulk(inputs.map((i) => ({ ...i, importBatchId: batch.id })));
+      const created = await window.electronAPI.transactions.createBulk(
+        inputs.map((i) => ({ ...i, importBatchId: batch.id }))
+      );
 
       setResult({ imported: importedCount, skipped: skippedCount });
       setPreview(null);
@@ -234,11 +245,54 @@ export default function ImportTransactions() {
       setPendingCollisions(null);
       setFileName(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
+
+      // Post-commit, never automatic -- the newly-created real transactions are already safe
+      // and saved regardless of what happens here. This only surfaces candidates for the user
+      // to explicitly confirm or skip; nothing gets linked without that click.
+      if (created.length > 0 && recurringBills.some((b) => b.active)) {
+        const candidates = await window.electronAPI.recurringBills.findCandidateMatches(created.map((tx) => tx.id));
+        setPendingBillMatches(candidates.length > 0 ? candidates : null);
+        const defaults: Record<string, string> = {};
+        candidates.forEach((c) => {
+          if (c.candidateBillIds.length === 1) defaults[c.transactionId] = c.candidateBillIds[0];
+        });
+        setBillChoices(defaults);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setImporting(false);
     }
+  }
+
+  function billLabel(id: string): string {
+    return recurringBills.find((b) => b.id === id)?.label ?? '(unknown bill)';
+  }
+
+  function chooseBill(transactionId: string, billId: string) {
+    setBillChoices((prev) => ({ ...prev, [transactionId]: billId }));
+  }
+
+  async function confirmBillMatch(transactionId: string) {
+    const billId = billChoices[transactionId];
+    if (!billId) return;
+    setConfirmingBillTx(transactionId);
+    try {
+      await window.electronAPI.transactions.update(transactionId, { recurringBillId: billId });
+      setPendingBillMatches((prev) => {
+        const next = (prev ?? []).filter((c) => c.transactionId !== transactionId);
+        return next.length > 0 ? next : null;
+      });
+    } finally {
+      setConfirmingBillTx(null);
+    }
+  }
+
+  function skipBillMatch(transactionId: string) {
+    setPendingBillMatches((prev) => {
+      const next = (prev ?? []).filter((c) => c.transactionId !== transactionId);
+      return next.length > 0 ? next : null;
+    });
   }
 
   const importableCount = preview
@@ -293,6 +347,72 @@ export default function ImportTransactions() {
           <button className="btn btn-primary" onClick={() => navigate('/')}>
             View Transactions
           </button>
+        </div>
+      )}
+
+      {pendingBillMatches && pendingBillMatches.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h2 style={{ fontSize: 15, marginTop: 0 }}>
+            Recurring Bill matches ({pendingBillMatches.length})
+          </h2>
+          <p className="text-muted" style={{ fontSize: 13, marginTop: -8 }}>
+            These imported transactions look like they might satisfy a Recurring Bill you've pencilled in. Nothing is
+            linked automatically — confirm each one you want to mark satisfied, or skip it.
+          </p>
+          {pendingBillMatches.map((c) => (
+            <div
+              key={c.transactionId}
+              style={{ borderTop: '1px solid var(--color-primary-action-hover)', padding: '12px 0' }}
+            >
+              <div style={{ fontSize: 13, marginBottom: 6 }}>
+                <strong>{c.transactionDescription}</strong> — {formatCurrency(c.transactionAmount)} on{' '}
+                {formatDate(c.transactionDate)}
+              </div>
+              {c.candidateBillIds.length === 1 ? (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 400 }}>
+                  <input
+                    type="radio"
+                    name={`bill-match-${c.transactionId}`}
+                    checked={billChoices[c.transactionId] === c.candidateBillIds[0]}
+                    onChange={() => chooseBill(c.transactionId, c.candidateBillIds[0])}
+                  />
+                  This is "{billLabel(c.candidateBillIds[0])}"
+                </label>
+              ) : (
+                <div>
+                  <p className="text-muted" style={{ fontSize: 12, margin: '0 0 4px' }}>
+                    More than one bill could match — pick the right one:
+                  </p>
+                  {c.candidateBillIds.map((billId) => (
+                    <label
+                      key={billId}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 400 }}
+                    >
+                      <input
+                        type="radio"
+                        name={`bill-match-${c.transactionId}`}
+                        checked={billChoices[c.transactionId] === billId}
+                        onChange={() => chooseBill(c.transactionId, billId)}
+                      />
+                      {billLabel(billId)}
+                    </label>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button className="btn" onClick={() => skipBillMatch(c.transactionId)}>
+                  Skip
+                </button>
+                <button
+                  className="btn btn-primary"
+                  disabled={!billChoices[c.transactionId] || confirmingBillTx === c.transactionId}
+                  onClick={() => void confirmBillMatch(c.transactionId)}
+                >
+                  {confirmingBillTx === c.transactionId ? 'Confirming…' : 'Confirm Match'}
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

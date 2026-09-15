@@ -21,6 +21,13 @@ import {
   ProjectionSeriesPoint,
   ProjectionScenarioOptions,
 } from '../shared/types/projection';
+import {
+  RecurringBill,
+  CreateRecurringBillInput,
+  UpdateRecurringBillInput,
+  RecurringBillOccurrence,
+  RecurringBillMatchCandidate,
+} from '../shared/types/recurringBill';
 
 declare global {
   interface Window {
@@ -106,6 +113,15 @@ declare global {
           excludedIds?: string[],
           options?: ProjectionScenarioOptions
         ) => Promise<ProjectionSeriesPoint[]>;
+      };
+      recurringBills: {
+        getAll: () => Promise<RecurringBill[]>;
+        create: (input: CreateRecurringBillInput) => Promise<RecurringBill>;
+        update: (id: string, input: UpdateRecurringBillInput) => Promise<RecurringBill>;
+        delete: (id: string) => Promise<{ success: boolean }>;
+        getMonthlyOccurrences: (monthStart: string, monthEnd: string) => Promise<RecurringBillOccurrence[]>;
+        getExpectedTotal: (windowStart: string, windowEnd: string) => Promise<number>;
+        findCandidateMatches: (transactionIds: string[]) => Promise<RecurringBillMatchCandidate[]>;
       };
       dbLocation: {
         get: () => Promise<{ path: string; isDefault: boolean; defaultPath: string }>;
