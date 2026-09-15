@@ -3,6 +3,7 @@ import ImportTransactions from './pages/ImportTransactions';
 import Transactions from './pages/Transactions';
 import ReconciliationPage from './pages/Reconciliation';
 import Obligations from './pages/Obligations';
+import Projections from './pages/Projections';
 import Accounts from './pages/Accounts';
 import Settings from './pages/Settings';
 import Layout from './components/Layout';
@@ -23,6 +24,7 @@ function App() {
               <Route path="/reconcile" element={<ReconciliationPage />} />
               <Route path="/obligations" element={<Obligations />} />
               <Route path="/reserves" element={<Navigate to="/obligations" replace />} />
+              <Route path="/projections" element={<Projections />} />
               <Route path="/accounts" element={<Accounts />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>

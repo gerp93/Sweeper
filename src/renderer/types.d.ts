@@ -12,6 +12,13 @@ import {
   CreateObligationLineItemInput,
   UpdateObligationLineItemInput,
 } from '../shared/types/obligation';
+import {
+  IncomeProjection,
+  CreateIncomeProjectionInput,
+  UpdateIncomeProjectionInput,
+  ProjectedBalancePoint,
+  ProjectionSeriesPoint,
+} from '../shared/types/projection';
 
 declare global {
   interface Window {
@@ -77,6 +84,14 @@ declare global {
         update: (id: string, input: UpdateObligationLineItemInput) => Promise<Obligation>;
         delete: (id: string) => Promise<Obligation>;
         move: (id: string, direction: 'up' | 'down') => Promise<Obligation>;
+      };
+      projections: {
+        getAll: () => Promise<IncomeProjection[]>;
+        create: (input: CreateIncomeProjectionInput) => Promise<IncomeProjection>;
+        update: (id: string, input: UpdateIncomeProjectionInput) => Promise<IncomeProjection>;
+        delete: (id: string) => Promise<{ success: boolean }>;
+        getProjectedBalance: (targetDate: string) => Promise<ProjectedBalancePoint>;
+        getSeries: (months: number) => Promise<ProjectionSeriesPoint[]>;
       };
       dbLocation: {
         get: () => Promise<{ path: string; isDefault: boolean; defaultPath: string }>;

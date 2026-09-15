@@ -21,6 +21,7 @@ import { BalanceService } from './database/balanceService';
 import { HelocSettingsService } from './database/helocSettingsService';
 import { ReconciliationService } from './database/reconciliationService';
 import { ObligationService } from './database/obligationService';
+import { ProjectionService } from './database/projectionService';
 import { CreateAccountInput, UpdateAccountInput } from '../shared/types/account';
 import { CreateTransactionInput, UpdateTransactionInput } from '../shared/types/transaction';
 import { CreateImportRuleInput, UpdateImportRuleInput } from '../shared/types/importRule';
@@ -34,6 +35,7 @@ import {
   CreateObligationLineItemInput,
   UpdateObligationLineItemInput,
 } from '../shared/types/obligation';
+import { CreateIncomeProjectionInput, UpdateIncomeProjectionInput } from '../shared/types/projection';
 import { Database } from 'sql.js';
 
 pinUserDataPath();
@@ -80,6 +82,7 @@ let balanceService: BalanceService;
 let helocSettingsService: HelocSettingsService;
 let reconciliationService: ReconciliationService;
 let obligationService: ObligationService;
+let projectionService: ProjectionService;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -224,6 +227,7 @@ app.whenReady().then(async () => {
   helocSettingsService = new HelocSettingsService(db);
   reconciliationService = new ReconciliationService(db, balanceService);
   obligationService = new ObligationService(db);
+  projectionService = new ProjectionService(db, balanceService, obligationService);
 
   importRuleService.seedDefaultRules();
 
@@ -355,6 +359,23 @@ function registerIPCHandlers() {
   ipcMain.handle('obligationLineItems:move', (_, id: string, direction: 'up' | 'down') =>
     obligationService.moveLineItem(id, direction)
   );
+
+  // Projection handlers
+  ipcMain.handle('projections:getAll', () => projectionService.getAllProjections());
+  ipcMain.handle('projections:create', (_, input: CreateIncomeProjectionInput) =>
+    projectionService.createProjection(input)
+  );
+  ipcMain.handle('projections:update', (_, id: string, input: UpdateIncomeProjectionInput) =>
+    projectionService.updateProjection(id, input)
+  );
+  ipcMain.handle('projections:delete', (_, id: string) => {
+    projectionService.deleteProjection(id);
+    return { success: true };
+  });
+  ipcMain.handle('projections:getProjectedBalance', (_, targetDate: string) =>
+    projectionService.getProjectedBalance(targetDate)
+  );
+  ipcMain.handle('projections:getSeries', (_, months: number) => projectionService.getProjectionSeries(months));
 
   // Database location handlers
   ipcMain.handle('dbLocation:get', () => ({

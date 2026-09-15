@@ -12,6 +12,7 @@ import {
   CreateObligationLineItemInput,
   UpdateObligationLineItemInput,
 } from '../shared/types/obligation';
+import { CreateIncomeProjectionInput, UpdateIncomeProjectionInput } from '../shared/types/projection';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   accounts: {
@@ -88,6 +89,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('obligationLineItems:update', id, input),
     delete: (id: string) => ipcRenderer.invoke('obligationLineItems:delete', id),
     move: (id: string, direction: 'up' | 'down') => ipcRenderer.invoke('obligationLineItems:move', id, direction),
+  },
+
+  projections: {
+    getAll: () => ipcRenderer.invoke('projections:getAll'),
+    create: (input: CreateIncomeProjectionInput) => ipcRenderer.invoke('projections:create', input),
+    update: (id: string, input: UpdateIncomeProjectionInput) => ipcRenderer.invoke('projections:update', id, input),
+    delete: (id: string) => ipcRenderer.invoke('projections:delete', id),
+    getProjectedBalance: (targetDate: string) => ipcRenderer.invoke('projections:getProjectedBalance', targetDate),
+    getSeries: (months: number) => ipcRenderer.invoke('projections:getSeries', months),
   },
 
   dbLocation: {
