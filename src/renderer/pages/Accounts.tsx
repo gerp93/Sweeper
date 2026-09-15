@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Account } from '../../shared/types/account';
 import { AccountAlias } from '../../shared/types/accountAlias';
 import { Transaction } from '../../shared/types/transaction';
@@ -6,6 +6,7 @@ import AccountForm from '../components/AccountForm';
 import MergeAccountForm from '../components/MergeAccountForm';
 import ManageAliasesForm from '../components/ManageAliasesForm';
 import SuggestedMerges from '../components/SuggestedMerges';
+import { formatCurrency, formatDate } from '../utils/format';
 
 export default function Accounts() {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -18,6 +19,7 @@ export default function Accounts() {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
   const [activeTab, setActiveTab] = useState<'accounts' | 'merges'>('accounts');
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     load();
@@ -85,6 +87,18 @@ export default function Accounts() {
     await load();
   }
 
+  function toggleExpanded(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
   const txCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const tx of transactions) {
@@ -102,6 +116,20 @@ export default function Accounts() {
     }
     return map;
   }, [aliases]);
+
+  const transactionsByAccount = useMemo(() => {
+    const map = new Map<string, Transaction[]>();
+    for (const tx of transactions) {
+      if (!tx.accountId) continue;
+      const list = map.get(tx.accountId) ?? [];
+      list.push(tx);
+      map.set(tx.accountId, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    }
+    return map;
+  }, [transactions]);
 
   return (
     <div>
@@ -150,44 +178,93 @@ export default function Accounts() {
               <tbody>
                 {accounts.map((a) => {
                   const accountAliases = aliasesByAccount.get(a.id) ?? [];
+                  const accountTxs = transactionsByAccount.get(a.id) ?? [];
+                  const isExpanded = expandedIds.has(a.id);
                   return (
-                    <tr
-                      key={a.id}
-                      ref={(el) => {
-                        rowRefs.current[a.id] = el;
-                      }}
-                      className={a.id === highlightId ? 'row-highlight' : undefined}
-                    >
-                      <td>{a.friendlyName}</td>
-                      <td className="text-muted">
-                        {accountAliases.length === 0 ? (
-                          <span className="amount-negative">none — won't match on import</span>
-                        ) : accountAliases.length === 1 ? (
-                          accountAliases[0].rawName
-                        ) : (
-                          `${accountAliases[0].rawName} +${accountAliases.length - 1} more`
-                        )}
-                      </td>
-                      <td className="text-muted" style={{ textAlign: 'right' }}>
-                        {txCounts.get(a.id) ?? 0}
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button className="btn" onClick={() => setManagingAliasesFor(a)}>
-                            Aliases
-                          </button>
-                          <button className="btn" onClick={() => setEditing(a)}>
-                            Rename
-                          </button>
-                          <button className="btn" onClick={() => setMerging(a)}>
-                            Merge into…
-                          </button>
-                          <button className="btn btn-danger" onClick={() => handleDelete(a.id)}>
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                    <Fragment key={a.id}>
+                      <tr
+                        ref={(el) => {
+                          rowRefs.current[a.id] = el;
+                        }}
+                        className={a.id === highlightId ? 'row-highlight' : undefined}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => toggleExpanded(a.id)}
+                      >
+                        <td>
+                          <span className="text-muted" style={{ display: 'inline-block', width: 14 }}>
+                            {isExpanded ? '▾' : '▸'}
+                          </span>
+                          {a.friendlyName}
+                        </td>
+                        <td className="text-muted">
+                          {accountAliases.length === 0 ? (
+                            <span className="amount-negative">none — won't match on import</span>
+                          ) : accountAliases.length === 1 ? (
+                            accountAliases[0].rawName
+                          ) : (
+                            `${accountAliases[0].rawName} +${accountAliases.length - 1} more`
+                          )}
+                        </td>
+                        <td className="text-muted" style={{ textAlign: 'right' }}>
+                          {txCounts.get(a.id) ?? 0}
+                        </td>
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button className="btn" onClick={() => setManagingAliasesFor(a)}>
+                              Aliases
+                            </button>
+                            <button className="btn" onClick={() => setEditing(a)}>
+                              Rename
+                            </button>
+                            <button className="btn" onClick={() => setMerging(a)}>
+                              Merge into…
+                            </button>
+                            <button className="btn btn-danger" onClick={() => handleDelete(a.id)}>
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={4} style={{ padding: 0, background: 'var(--color-bg-hover)' }}>
+                            {accountTxs.length === 0 ? (
+                              <div className="empty-state" style={{ padding: 16 }}>
+                                No transactions on this account.
+                              </div>
+                            ) : (
+                              <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                                <table className="data-table" style={{ margin: 0 }}>
+                                  <thead>
+                                    <tr>
+                                      <th>Date</th>
+                                      <th>Description</th>
+                                      <th>Memo</th>
+                                      <th style={{ textAlign: 'right' }}>Amount</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {accountTxs.map((tx) => (
+                                      <tr key={tx.id}>
+                                        <td>{formatDate(tx.date)}</td>
+                                        <td>{tx.description}</td>
+                                        <td className="text-muted">{tx.memo ?? '—'}</td>
+                                        <td
+                                          style={{ textAlign: 'right' }}
+                                          className={tx.amount >= 0 ? 'amount-positive' : 'amount-negative'}
+                                        >
+                                          {formatCurrency(tx.amount)}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>

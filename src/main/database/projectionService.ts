@@ -249,6 +249,30 @@ export class ProjectionService {
     return new Set(ids);
   }
 
+  // Real deposits already received between monthStart and today (clamped -- 0 for a month
+  // that hasn't started yet) on an account some included projection is linked to. Display-only:
+  // there's no link from a real transaction to the projection it corresponds to, so this is an
+  // additive "what's actually landed" figure, not a one-to-one match.
+  private actualIncomeReceivedInMonth(monthStart: string, monthEnd: string, excludedIds: Set<string>): number {
+    const today = new Date().toISOString().slice(0, 10);
+    const rangeEnd = monthEnd < today ? monthEnd : today;
+    if (monthStart > rangeEnd) return 0;
+
+    const linkedAccountIds = new Set(
+      this.getAllProjections()
+        .filter((p) => !excludedIds.has(p.id) && p.accountId)
+        .map((p) => p.accountId as string)
+    );
+    if (linkedAccountIds.size === 0) return 0;
+
+    return this.transactionService
+      .getAllTransactions()
+      .filter((tx) => tx.date >= monthStart && tx.date <= rangeEnd)
+      .filter((tx) => tx.amount > 0)
+      .filter((tx) => tx.accountId && linkedAccountIds.has(tx.accountId))
+      .reduce((sum, tx) => sum + tx.amount, 0);
+  }
+
   // Average monthly spend (negative) over the trailing lookback window, on accounts not tied
   // to an active Obligation and excluding any transaction already allocated to one -- so
   // Obligation payments (modeled separately via obligationsPaidBy) aren't double-counted here.
@@ -317,6 +341,7 @@ export class ProjectionService {
   ): ProjectionSeriesPoint[] {
     const today = new Date().toISOString().slice(0, 10);
     const [y, m] = today.split('-').map(Number);
+    const excludedSet = new Set(excludedIds);
     const points: ProjectionSeriesPoint[] = [];
     let previousIncome = 0;
 
@@ -336,10 +361,12 @@ export class ProjectionService {
       const obligationsDueThisMonth = this.obligationsPaidBy(monthEnd) - this.obligationsPaidBy(addDays(monthStart, -1));
 
       const point = this.getProjectedBalance(monthEnd, excludedIds, options);
-      const projectedIncomeThisMonth = point.projectedIncome - previousIncome;
+      const stillToCome = point.projectedIncome - previousIncome;
       previousIncome = point.projectedIncome;
+      const actualReceived = this.actualIncomeReceivedInMonth(monthStart, monthEnd, excludedSet);
+      const incomeThisMonth = stillToCome + actualReceived;
 
-      points.push({ ...point, monthLabel, obligationsDueThisMonth, projectedIncomeThisMonth });
+      points.push({ ...point, monthLabel, obligationsDueThisMonth, incomeThisMonth });
     }
 
     return points;

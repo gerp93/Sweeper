@@ -73,7 +73,10 @@ export interface ProjectionSeriesPoint extends ProjectedBalancePoint {
   // Obligation dollars whose due date falls within this calendar month specifically (not
   // cumulative like obligationsPaidByDate), using current remaining amounts.
   obligationsDueThisMonth: number;
-  // Projected income landing within this calendar month specifically (not cumulative like
-  // projectedIncome).
-  projectedIncomeThisMonth: number;
+  // Display-only figure for this calendar month: still-to-come projected occurrences (the
+  // same forward-only amount baked into projectedIncome/projectedSpendableBalance) plus, for
+  // the current month only, real deposits already received on a linked account since the
+  // month started. Never feeds the balance math -- baseline already reflects real money, so
+  // adding it there would double-count.
+  incomeThisMonth: number;
 }
