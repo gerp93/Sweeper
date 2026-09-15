@@ -13,6 +13,68 @@ const FREQUENCY_LABELS: Record<ProjectionFrequency, string> = {
 
 const HORIZON_OPTIONS = [3, 6, 12];
 
+// A small dependency-free bar chart: one bar per month's projected truly-available balance,
+// diverging around a zero baseline. Bars below zero (a projected shortfall) use the same red
+// token as amount-negative everywhere else in the app; the first shortfall gets a marker.
+function ShortfallChart({ series }: { series: ProjectionSeriesPoint[] }) {
+  const height = 140;
+  const paddingTop = 20;
+  const paddingBottom = 36; // extra room so a negative-value label never collides with the month label below it
+  const plotHeight = height - paddingTop - paddingBottom;
+  const barGap = 12;
+  const width = Math.max(320, series.length * 70);
+  const barWidth = (width - barGap * (series.length + 1)) / series.length;
+
+  const values = series.map((p) => p.projectedTrulyAvailable);
+  const maxVal = Math.max(...values, 0);
+  const minVal = Math.min(...values, 0);
+  const range = maxVal - minVal || 1;
+  const yFor = (v: number) => paddingTop + plotHeight - ((v - minVal) / range) * plotHeight;
+  const yZero = yFor(0);
+
+  const shortfallIndex = series.findIndex((p) => p.projectedTrulyAvailable < 0);
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height, display: 'block' }}>
+      <line x1={0} y1={yZero} x2={width} y2={yZero} stroke="var(--color-border)" strokeWidth={1} />
+      {series.map((p, i) => {
+        const x = barGap + i * (barWidth + barGap);
+        const yTop = Math.min(yFor(p.projectedTrulyAvailable), yZero);
+        const barHeight = Math.max(2, Math.abs(yFor(p.projectedTrulyAvailable) - yZero));
+        const negative = p.projectedTrulyAvailable < 0;
+        const isCallout = i === shortfallIndex || i === series.length - 1;
+        return (
+          <g key={p.asOf}>
+            <rect
+              x={x}
+              y={yTop}
+              width={barWidth}
+              height={barHeight}
+              rx={4}
+              fill={negative ? 'var(--color-accent-red)' : 'var(--color-accent-green)'}
+            />
+            {isCallout && (
+              <text
+                x={x + barWidth / 2}
+                y={negative ? yTop + barHeight + 12 : yTop - 6}
+                textAnchor="middle"
+                fontSize={10}
+                fontWeight={600}
+                fill={negative ? 'var(--color-accent-red)' : 'var(--color-text)'}
+              >
+                {formatCurrency(p.projectedTrulyAvailable)}
+              </text>
+            )}
+            <text x={x + barWidth / 2} y={height - 6} textAnchor="middle" fontSize={10} fill="var(--color-accent-blue)">
+              {p.monthLabel.split(' ')[0].slice(0, 3)}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 export default function Projections() {
   const [projections, setProjections] = useState<IncomeProjection[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -134,6 +196,7 @@ export default function Projections() {
   }
 
   const lastPoint = series.length > 0 ? series[series.length - 1] : null;
+  const shortfallPoint = series.find((p) => p.projectedTrulyAvailable < 0) ?? null;
 
   return (
     <div>
@@ -187,31 +250,45 @@ export default function Projections() {
         {series.length === 0 ? (
           <div className="empty-state">Loading…</div>
         ) : (
-          <table className="data-table" style={{ marginTop: 8 }}>
-            <thead>
-              <tr>
-                <th>Month</th>
-                <th style={{ textAlign: 'right' }}>Projected Spendable</th>
-                <th style={{ textAlign: 'right' }}>Obligated by then</th>
-                <th style={{ textAlign: 'right' }}>Projected Truly Available</th>
-              </tr>
-            </thead>
-            <tbody>
-              {series.map((point) => (
-                <tr key={point.asOf}>
-                  <td>{point.monthLabel}</td>
-                  <td style={{ textAlign: 'right' }}>{formatCurrency(point.projectedSpendableBalance)}</td>
-                  <td style={{ textAlign: 'right' }}>{formatCurrency(point.obligationsDueByDate)}</td>
-                  <td
-                    style={{ textAlign: 'right' }}
-                    className={point.projectedTrulyAvailable < 0 ? 'amount-negative' : undefined}
-                  >
-                    {formatCurrency(point.projectedTrulyAvailable)}
-                  </td>
+          <>
+            <div style={{ padding: '4px 16px 0' }}>
+              <ShortfallChart series={series} />
+              {shortfallPoint ? (
+                <p className="amount-negative" style={{ fontSize: 13, fontWeight: 600, margin: '4px 0 0' }}>
+                  ⚠ Projected to run short around {shortfallPoint.monthLabel} ({formatCurrency(shortfallPoint.projectedTrulyAvailable)})
+                </p>
+              ) : (
+                <p className="amount-positive" style={{ fontSize: 13, fontWeight: 600, margin: '4px 0 0' }}>
+                  ✓ No shortfall projected in the next {horizonMonths} months
+                </p>
+              )}
+            </div>
+            <table className="data-table" style={{ marginTop: 8 }}>
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th style={{ textAlign: 'right' }}>Projected Spendable</th>
+                  <th style={{ textAlign: 'right' }}>Obligated by then</th>
+                  <th style={{ textAlign: 'right' }}>Projected Truly Available</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {series.map((point) => (
+                  <tr key={point.asOf}>
+                    <td>{point.monthLabel}</td>
+                    <td style={{ textAlign: 'right' }}>{formatCurrency(point.projectedSpendableBalance)}</td>
+                    <td style={{ textAlign: 'right' }}>{formatCurrency(point.obligationsDueByDate)}</td>
+                    <td
+                      style={{ textAlign: 'right' }}
+                      className={point.projectedTrulyAvailable < 0 ? 'amount-negative' : undefined}
+                    >
+                      {formatCurrency(point.projectedTrulyAvailable)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
         )}
       </div>
 
