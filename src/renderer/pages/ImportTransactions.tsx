@@ -3,12 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { AmountDateCollision, ParsedImportRow, findSameDayAmountCollisions, parseStatementCSV } from '../utils/csvParser';
 import { CreateTransactionInput, Transaction } from '../../shared/types/transaction';
 import { Obligation } from '../../shared/types/obligation';
+import { Account } from '../../shared/types/account';
 import { formatCurrency, formatDate } from '../utils/format';
 import Rules from './Rules';
 
 interface RowOverride {
   include: boolean;
+}
+
+interface AccountResolution {
+  mode: 'new' | 'existing';
   friendlyName: string;
+  accountId: string;
+}
+
+function defaultResolution(description: string): AccountResolution {
+  return { mode: 'new', friendlyName: description, accountId: '' };
 }
 
 export default function ImportTransactions() {
@@ -18,6 +28,8 @@ export default function ImportTransactions() {
   const [preview, setPreview] = useState<ParsedImportRow[] | null>(null);
   const [overrides, setOverrides] = useState<RowOverride[]>([]);
   const [existingTransactions, setExistingTransactions] = useState<Transaction[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [resolutions, setResolutions] = useState<Record<string, AccountResolution>>({});
   const [obligations, setObligations] = useState<Obligation[]>([]);
   const [autoAllocateObligations, setAutoAllocateObligations] = useState(true);
   const [pendingCollisions, setPendingCollisions] = useState<AmountDateCollision[] | null>(null);
@@ -34,17 +46,26 @@ export default function ImportTransactions() {
 
     try {
       const text = await file.text();
-      const [rules, accounts, existing, obligationList] = await Promise.all([
+      const [rules, accts, aliases, existing, obligationList] = await Promise.all([
         window.electronAPI.importRules.getAll(),
         window.electronAPI.accounts.getAll(),
+        window.electronAPI.accountAliases.getAll(),
         window.electronAPI.transactions.getAll(),
         window.electronAPI.obligations.getAll(),
       ]);
 
-      const rows = parseStatementCSV(text, rules, accounts, existing);
+      const rows = parseStatementCSV(text, rules, accts, aliases, existing);
       setPreview(rows);
-      setOverrides(rows.map((r) => ({ include: r.include, friendlyName: r.suggestedFriendlyName })));
+      setOverrides(rows.map((r) => ({ include: r.include })));
       setExistingTransactions(existing);
+      setAccounts(accts);
+      const initialResolutions: Record<string, AccountResolution> = {};
+      rows.forEach((r) => {
+        if (!r.matchedAccount && !(r.description in initialResolutions)) {
+          initialResolutions[r.description] = defaultResolution(r.description);
+        }
+      });
+      setResolutions(initialResolutions);
       setObligations(obligationList);
       setPendingCollisions(null);
       setFileName(file.name);
@@ -59,6 +80,13 @@ export default function ImportTransactions() {
     setPendingCollisions(null);
   }
 
+  function updateResolution(description: string, patch: Partial<AccountResolution>) {
+    setResolutions((prev) => ({
+      ...prev,
+      [description]: { ...(prev[description] ?? defaultResolution(description)), ...patch },
+    }));
+  }
+
   function statusFor(row: ParsedImportRow): { label: string; pillClass: string } {
     if (row.matchedRule) {
       return { label: `Skipped — rule: ${row.matchedRule.pattern}`, pillClass: 'pill-excluded' };
@@ -66,7 +94,7 @@ export default function ImportTransactions() {
     if (row.isDuplicate) {
       return { label: 'Duplicate', pillClass: 'pill-duplicate' };
     }
-    return { label: row.matchedAccount ? `Matched: ${row.matchedAccount.friendlyName}` : 'New account', pillClass: 'pill-included' };
+    return { label: row.matchedAccount ? `Matched: ${row.matchedAccount.friendlyName}` : 'New description', pillClass: 'pill-included' };
   }
 
   // Rows the same-day/same-amount check should look at -- whatever would actually get
@@ -75,6 +103,28 @@ export default function ImportTransactions() {
     if (!preview) return [];
     return preview.map((_row, idx) => idx).filter((idx) => !preview[idx].matchedRule && overrides[idx]?.include);
   }, [preview, overrides]);
+
+  // Distinct raw descriptions among rows that would actually import but didn't match an
+  // existing account -- one resolution decision per description, not per row, since a
+  // statement commonly has several rows sharing one description.
+  const unmatchedToResolve = useMemo(() => {
+    if (!preview) return [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    includedIndexes.forEach((idx) => {
+      const row = preview[idx];
+      if (!row.matchedAccount && !seen.has(row.description)) {
+        seen.add(row.description);
+        out.push(row.description);
+      }
+    });
+    return out;
+  }, [preview, includedIndexes]);
+
+  const hasUnresolvedChoice = unmatchedToResolve.some((desc) => {
+    const r = resolutions[desc] ?? defaultResolution(desc);
+    return r.mode === 'existing' ? !r.accountId : !r.friendlyName.trim();
+  });
 
   const currentCollisions = useMemo(
     () => (preview ? findSameDayAmountCollisions(includedIndexes.map((idx) => preview[idx]), existingTransactions) : []),
@@ -91,7 +141,7 @@ export default function ImportTransactions() {
   }, [currentCollisions, includedIndexes]);
 
   function handleImport() {
-    if (!preview || !fileName) return;
+    if (!preview || !fileName || hasUnresolvedChoice) return;
 
     if (currentCollisions.length > 0 && !pendingCollisions) {
       setPendingCollisions(currentCollisions);
@@ -110,6 +160,8 @@ export default function ImportTransactions() {
       const inputs: CreateTransactionInput[] = [];
       let importedCount = 0;
       let skippedCount = 0;
+      // One account/alias gets created per distinct new description, not per row.
+      const resolvedAccountIds = new Map<string, string>();
 
       for (let i = 0; i < preview.length; i++) {
         const row = preview[i];
@@ -128,9 +180,21 @@ export default function ImportTransactions() {
 
         let accountId: string | null = row.matchedAccount?.id ?? null;
         if (!accountId) {
-          const friendlyName = override.friendlyName.trim() || row.description;
-          const account = await window.electronAPI.accounts.findOrCreate(row.description, friendlyName);
-          accountId = account.id;
+          if (resolvedAccountIds.has(row.description)) {
+            accountId = resolvedAccountIds.get(row.description)!;
+          } else {
+            const resolution = resolutions[row.description] ?? defaultResolution(row.description);
+            if (resolution.mode === 'existing' && resolution.accountId) {
+              accountId = resolution.accountId;
+              await window.electronAPI.accountAliases.create(accountId, row.description);
+            } else {
+              const friendlyName = resolution.friendlyName.trim() || row.description;
+              const account = await window.electronAPI.accounts.create({ friendlyName });
+              await window.electronAPI.accountAliases.create(account.id, row.description);
+              accountId = account.id;
+            }
+            resolvedAccountIds.set(row.description, accountId);
+          }
         }
 
         const autoObligation =
@@ -164,6 +228,8 @@ export default function ImportTransactions() {
       setPreview(null);
       setOverrides([]);
       setExistingTransactions([]);
+      setAccounts([]);
+      setResolutions({});
       setObligations([]);
       setPendingCollisions(null);
       setFileName(null);
@@ -230,6 +296,66 @@ export default function ImportTransactions() {
         </div>
       )}
 
+      {preview && unmatchedToResolve.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h2 style={{ fontSize: 15, marginTop: 0 }}>New Account Descriptions ({unmatchedToResolve.length})</h2>
+          <p className="text-muted" style={{ fontSize: 13, marginTop: -8 }}>
+            These statement descriptions didn't match any existing account. For each, either confirm it's genuinely
+            new, or map it to an account you already have — either way, this exact description will auto-match on
+            every future import from now on.
+          </p>
+          {unmatchedToResolve.map((desc) => {
+            const resolution = resolutions[desc] ?? defaultResolution(desc);
+            return (
+              <div key={desc} style={{ borderTop: '1px solid var(--color-primary-action-hover)', padding: '12px 0' }}>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>{desc}</div>
+                <div className="grid-2">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 400 }}>
+                    <input
+                      type="radio"
+                      name={`resolution-${desc}`}
+                      checked={resolution.mode === 'new'}
+                      onChange={() => updateResolution(desc, { mode: 'new' })}
+                    />
+                    Create new account
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 400 }}>
+                    <input
+                      type="radio"
+                      name={`resolution-${desc}`}
+                      checked={resolution.mode === 'existing'}
+                      onChange={() => updateResolution(desc, { mode: 'existing' })}
+                    />
+                    Map to existing account
+                  </label>
+                </div>
+                {resolution.mode === 'new' ? (
+                  <input
+                    value={resolution.friendlyName}
+                    onChange={(e) => updateResolution(desc, { friendlyName: e.target.value })}
+                    style={{ marginTop: 8 }}
+                    placeholder="Friendly name"
+                  />
+                ) : (
+                  <select
+                    value={resolution.accountId}
+                    onChange={(e) => updateResolution(desc, { accountId: e.target.value })}
+                    style={{ marginTop: 8 }}
+                  >
+                    <option value="">Select an account…</option>
+                    {accounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.friendlyName}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {preview && pendingCollisions && pendingCollisions.length > 0 && (
         <div className="card" style={{ marginTop: 16, borderColor: 'var(--color-accent-red)' }}>
           <h2 style={{ fontSize: 15, marginTop: 0, color: 'var(--color-accent-red)' }}>
@@ -268,8 +394,9 @@ export default function ImportTransactions() {
               </h1>
               <button
                 className="btn btn-primary"
-                disabled={importing || Boolean(pendingCollisions && pendingCollisions.length > 0)}
+                disabled={importing || hasUnresolvedChoice || Boolean(pendingCollisions && pendingCollisions.length > 0)}
                 onClick={handleImport}
+                title={hasUnresolvedChoice ? 'Resolve the new account descriptions above first' : undefined}
               >
                 {importing ? 'Importing…' : `Import ${importableCount} Transactions`}
               </button>
@@ -321,17 +448,7 @@ export default function ImportTransactions() {
                       ) : row.matchedAccount ? (
                         row.matchedAccount.friendlyName
                       ) : (
-                        <input
-                          value={override.friendlyName}
-                          onChange={(e) => updateOverride(idx, { friendlyName: e.target.value })}
-                          style={{
-                            padding: '4px 6px',
-                            border: '1px solid var(--color-primary-action-hover)',
-                            borderRadius: 6,
-                            width: '100%',
-                          }}
-                          disabled={!override.include}
-                        />
+                        <span className="text-muted">see "New Account Descriptions" above</span>
                       )}
                     </td>
                     <td style={{ textAlign: 'right' }} className={row.amount >= 0 ? 'amount-positive' : 'amount-negative'}>

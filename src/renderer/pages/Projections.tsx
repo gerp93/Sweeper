@@ -82,6 +82,7 @@ export default function Projections() {
   const [todaySpendable, setTodaySpendable] = useState<number | null>(null);
   const [horizonMonths, setHorizonMonths] = useState(6);
   const [loading, setLoading] = useState(true);
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -89,6 +90,7 @@ export default function Projections() {
   const [amount, setAmount] = useState('');
   const [frequency, setFrequency] = useState<ProjectionFrequency>('monthly');
   const [startDate, setStartDate] = useState(todayIso());
+  const [lastDayOfMonth, setLastDayOfMonth] = useState(false);
   const [endDate, setEndDate] = useState('');
   const [accountId, setAccountId] = useState('');
   const [note, setNote] = useState('');
@@ -100,9 +102,9 @@ export default function Projections() {
   }, []);
 
   useEffect(() => {
-    loadSeries(horizonMonths);
+    loadSeries(horizonMonths, excludedIds);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [horizonMonths, projections]);
+  }, [horizonMonths, projections, excludedIds]);
 
   async function load() {
     setLoading(true);
@@ -115,11 +117,28 @@ export default function Projections() {
     setAccounts(accts);
     setTodaySpendable(spendable.balance);
     setLoading(false);
+    setExcludedIds((prev) => {
+      const validIds = new Set(list.map((p) => p.id));
+      const next = new Set([...prev].filter((id) => validIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
   }
 
-  async function loadSeries(months: number) {
-    const result = await window.electronAPI.projections.getSeries(months);
+  async function loadSeries(months: number, excluded: Set<string>) {
+    const result = await window.electronAPI.projections.getSeries(months, [...excluded]);
     setSeries(result);
+  }
+
+  function toggleIncluded(id: string, included: boolean) {
+    setExcludedIds((prev) => {
+      const next = new Set(prev);
+      if (included) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   }
 
   function accountName(id: string | null) {
@@ -134,6 +153,7 @@ export default function Projections() {
     setAmount('');
     setFrequency('monthly');
     setStartDate(todayIso());
+    setLastDayOfMonth(false);
     setEndDate('');
     setAccountId('');
     setNote('');
@@ -152,6 +172,7 @@ export default function Projections() {
     setAmount(String(projection.amount));
     setFrequency(projection.frequency);
     setStartDate(projection.startDate);
+    setLastDayOfMonth(projection.lastDayOfMonth);
     setEndDate(projection.endDate ?? '');
     setAccountId(projection.accountId ?? '');
     setNote(projection.note ?? '');
@@ -171,6 +192,7 @@ export default function Projections() {
         amount: parsedAmount,
         frequency,
         startDate,
+        lastDayOfMonth: frequency === 'monthly' && lastDayOfMonth,
         endDate: endDate || null,
         accountId: accountId || null,
         note: note.trim() || null,
@@ -304,6 +326,7 @@ export default function Projections() {
           <table className="data-table">
             <thead>
               <tr>
+                <th>Include</th>
                 <th>Label</th>
                 <th style={{ textAlign: 'right' }}>Amount</th>
                 <th>Frequency</th>
@@ -316,9 +339,20 @@ export default function Projections() {
             <tbody>
               {projections.map((p) => (
                 <tr key={p.id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={!excludedIds.has(p.id)}
+                      onChange={(e) => toggleIncluded(p.id, e.target.checked)}
+                      title="Include in projections"
+                    />
+                  </td>
                   <td>{p.label}</td>
                   <td style={{ textAlign: 'right' }}>{formatCurrency(p.amount)}</td>
-                  <td>{FREQUENCY_LABELS[p.frequency]}</td>
+                  <td>
+                    {FREQUENCY_LABELS[p.frequency]}
+                    {p.frequency === 'monthly' && p.lastDayOfMonth ? ' (last day)' : ''}
+                  </td>
                   <td>{formatDate(p.startDate)}</td>
                   <td>{p.endDate ? formatDate(p.endDate) : '—'}</td>
                   <td>{accountName(p.accountId) ?? '—'}</td>
@@ -373,6 +407,22 @@ export default function Projections() {
               <div className="field">
                 <label>Start Date</label>
                 <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                {frequency === 'monthly' && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontWeight: 400 }}>
+                    <input
+                      type="checkbox"
+                      checked={lastDayOfMonth}
+                      onChange={(e) => setLastDayOfMonth(e.target.checked)}
+                    />
+                    Always land on the last day of the month
+                  </label>
+                )}
+                {frequency === 'monthly' && lastDayOfMonth && (
+                  <p className="text-muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+                    The day above only picks the starting month -- each occurrence lands on that
+                    month's actual last day (28-31).
+                  </p>
+                )}
               </div>
               <div className="field">
                 <label>End Date (optional)</label>

@@ -29,12 +29,67 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
   db.run(`
     CREATE TABLE IF NOT EXISTS accounts (
       id TEXT PRIMARY KEY,
-      raw_name TEXT NOT NULL UNIQUE,
       friendly_name TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
   `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS account_aliases (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      raw_name TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Migration: raw_name used to live directly on accounts (one raw bank description per
+  // account, and merging/renaming destroyed it -- so a merge never stuck past the next
+  // import of that same description). It's now a many-to-one alias, so an account can match
+  // several raw descriptions and merging just reassigns them instead of losing them.
+  // Backfill one alias per pre-existing account from its old column, then drop the column.
+  try {
+    const legacy = db.exec(`SELECT id, raw_name, created_at FROM accounts`);
+    if (legacy.length > 0) {
+      const existing = db.exec(`SELECT raw_name FROM account_aliases`);
+      const alreadyMigrated = new Set(existing.length > 0 ? existing[0].values.map((row) => row[0]) : []);
+      for (const [id, rawName, createdAt] of legacy[0].values) {
+        if (rawName == null || alreadyMigrated.has(rawName)) continue;
+        db.run(`INSERT INTO account_aliases (id, account_id, raw_name, created_at) VALUES (?, ?, ?, ?)`, [
+          uuidv4(),
+          id,
+          rawName,
+          createdAt,
+        ]);
+      }
+    }
+  } catch (e) {
+    // accounts has no raw_name column -- already migrated or a fresh database
+  }
+  // raw_name carried a UNIQUE constraint, which SQLite backs with an implicit index --
+  // ALTER TABLE DROP COLUMN refuses to drop an indexed column, so a plain DROP COLUMN here
+  // silently fails. Rebuild the table instead (SQLite's standard way to drop a column that
+  // can't use the fast path), guarded so it only runs once.
+  const accountsColumns = db.exec(`PRAGMA table_info(accounts)`);
+  const hasRawName = accountsColumns.length > 0 && accountsColumns[0].values.some((row) => row[1] === 'raw_name');
+  if (hasRawName) {
+    db.run('PRAGMA foreign_keys = OFF');
+    db.run(`
+      CREATE TABLE accounts_new (
+        id TEXT PRIMARY KEY,
+        friendly_name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+    db.run(`INSERT INTO accounts_new (id, friendly_name, created_at, updated_at)
+            SELECT id, friendly_name, created_at, updated_at FROM accounts`);
+    db.run(`DROP TABLE accounts`);
+    db.run(`ALTER TABLE accounts_new RENAME TO accounts`);
+    db.run('PRAGMA foreign_keys = ON');
+  }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS import_rules (
@@ -271,6 +326,14 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
     )
   `);
 
+  // Migration: "always land on the last day of the month" was added after income_projections
+  // already shipped -- add the column to databases created before this change.
+  try {
+    db.run(`ALTER TABLE income_projections ADD COLUMN last_day_of_month INTEGER NOT NULL DEFAULT 0`);
+  } catch (e) {
+    // already exists
+  }
+
   // Drop indexes that still carry the pre-rename names -- RENAME COLUMN/TABLE keeps them
   // functional under their old names, so leaving them in place would just leave a stale-named
   // duplicate sitting alongside the newly (re)created one below.
@@ -291,6 +354,7 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
   db.run(`CREATE INDEX IF NOT EXISTS idx_obligation_line_items_obligation ON obligation_line_items(obligation_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_obligation_line_items_target_date ON obligation_line_items(target_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_income_projections_start_date ON income_projections(start_date)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_account_aliases_account ON account_aliases(account_id)`);
 
   saveDatabase(db, dbPath);
 

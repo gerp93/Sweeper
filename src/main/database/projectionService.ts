@@ -25,6 +25,7 @@ function rowToProjection(columns: string[], row: any[]): IncomeProjection {
     endDate: obj.endDate,
     accountId: obj.accountId,
     note: obj.note,
+    lastDayOfMonth: !!obj.lastDayOfMonth,
     createdAt: obj.createdAt,
     updatedAt: obj.updatedAt,
   };
@@ -39,6 +40,7 @@ const SELECT_COLUMNS = `
   end_date as endDate,
   account_id as accountId,
   note,
+  last_day_of_month as lastDayOfMonth,
   created_at as createdAt,
   updated_at as updatedAt
 `;
@@ -69,10 +71,17 @@ function addMonthsClamped(dateStr: string, months: number): string {
   return isoFromUTC(new Date(Date.UTC(targetYear, targetMonth, clampedDay)));
 }
 
+// The last calendar day of dateStr's own month (28-31, whatever that month has).
+function lastDayOfMonthFor(dateStr: string): string {
+  const [y, m] = dateStr.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+}
+
 // Every occurrence date of a projection landing in [windowStart, windowEnd], honoring the
 // projection's own end_date if it cuts the window shorter.
 export function expandOccurrences(
-  projection: Pick<IncomeProjection, 'frequency' | 'startDate' | 'endDate'>,
+  projection: Pick<IncomeProjection, 'frequency' | 'startDate' | 'endDate' | 'lastDayOfMonth'>,
   windowStart: string,
   windowEnd: string
 ): string[] {
@@ -102,7 +111,8 @@ export function expandOccurrences(
   // monthly -- compute each occurrence independently from the original start date so a
   // clamped short month (e.g. Feb 28) doesn't permanently shift later occurrences.
   for (let n = 0; n < MAX_OCCURRENCES; n++) {
-    const occurrence = addMonthsClamped(projection.startDate, n);
+    let occurrence = addMonthsClamped(projection.startDate, n);
+    if (projection.lastDayOfMonth) occurrence = lastDayOfMonthFor(occurrence);
     if (occurrence > effectiveEnd) break;
     if (occurrence >= windowStart) dates.push(occurrence);
   }
@@ -127,8 +137,8 @@ export class ProjectionService {
     const now = new Date().toISOString();
 
     this.db.run(
-      `INSERT INTO income_projections (id, label, amount, frequency, start_date, end_date, account_id, note, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO income_projections (id, label, amount, frequency, start_date, end_date, account_id, note, last_day_of_month, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.label,
@@ -138,6 +148,7 @@ export class ProjectionService {
         input.endDate ?? null,
         input.accountId ?? null,
         input.note ?? null,
+        input.lastDayOfMonth ? 1 : 0,
         now,
         now,
       ]
@@ -180,6 +191,10 @@ export class ProjectionService {
       updates.push('note = ?');
       params.push(input.note);
     }
+    if (input.lastDayOfMonth !== undefined) {
+      updates.push('last_day_of_month = ?');
+      params.push(input.lastDayOfMonth ? 1 : 0);
+    }
     updates.push('updated_at = ?');
     params.push(new Date().toISOString());
     params.push(id);
@@ -203,13 +218,15 @@ export class ProjectionService {
       .reduce((sum, g) => sum + g.remaining, 0);
   }
 
-  getProjectedBalance(targetDate: string): ProjectedBalancePoint {
+  getProjectedBalance(targetDate: string, excludedIds: string[] = []): ProjectedBalancePoint {
     const today = new Date().toISOString().slice(0, 10);
     const baseline = this.balanceService.getSpendableBalance(today);
+    const excluded = new Set(excludedIds);
 
     const projectedIncome =
       targetDate > today
         ? this.getAllProjections()
+            .filter((p) => !excluded.has(p.id))
             .flatMap((p) => expandOccurrences(p, addDays(today, 1), targetDate).map(() => p.amount))
             .reduce((sum, amount) => sum + amount, 0)
         : 0;
@@ -229,7 +246,7 @@ export class ProjectionService {
 
   // One point per month-end for the next `months` months, so the UI can render a table in a
   // single call instead of one round trip per month.
-  getProjectionSeries(months: number): ProjectionSeriesPoint[] {
+  getProjectionSeries(months: number, excludedIds: string[] = []): ProjectionSeriesPoint[] {
     const today = new Date().toISOString().slice(0, 10);
     const [y, m] = today.split('-').map(Number);
     const points: ProjectionSeriesPoint[] = [];
@@ -246,7 +263,7 @@ export class ProjectionService {
         timeZone: 'UTC',
       });
 
-      points.push({ ...this.getProjectedBalance(monthEnd), monthLabel });
+      points.push({ ...this.getProjectedBalance(monthEnd, excludedIds), monthLabel });
     }
 
     return points;

@@ -13,6 +13,7 @@ import {
   resetToDefaultDbPath,
 } from './dbLocation';
 import { AccountService } from './database/accountService';
+import { AccountAliasService } from './database/accountAliasService';
 import { TransactionService } from './database/transactionService';
 import { ImportRuleService } from './database/importRuleService';
 import { ImportBatchService } from './database/importBatchService';
@@ -74,6 +75,7 @@ if (!gotLock) {
 let mainWindow: BrowserWindow | null = null;
 let db: Database | null = null;
 let accountService: AccountService;
+let accountAliasService: AccountAliasService;
 let transactionService: TransactionService;
 let importRuleService: ImportRuleService;
 let importBatchService: ImportBatchService;
@@ -219,6 +221,7 @@ app.whenReady().then(async () => {
 
   db = await initDatabase();
   accountService = new AccountService(db);
+  accountAliasService = new AccountAliasService(db);
   transactionService = new TransactionService(db);
   importRuleService = new ImportRuleService(db);
   importBatchService = new ImportBatchService(db);
@@ -257,19 +260,28 @@ function registerIPCHandlers() {
   // Account handlers
   ipcMain.handle('accounts:getAll', () => accountService.getAllAccounts());
   ipcMain.handle('accounts:getById', (_, id: string) => accountService.getAccountById(id));
-  ipcMain.handle('accounts:getByRawName', (_, rawName: string) => accountService.getAccountByRawName(rawName));
   ipcMain.handle('accounts:create', (_, input: CreateAccountInput) => accountService.createAccount(input));
   ipcMain.handle('accounts:update', (_, id: string, input: UpdateAccountInput) => accountService.updateAccount(id, input));
   ipcMain.handle('accounts:delete', (_, id: string) => {
     accountService.deleteAccount(id);
     return { success: true };
   });
-  ipcMain.handle('accounts:findOrCreate', (_, rawName: string, friendlyName: string) =>
-    accountService.findOrCreateByRawName(rawName, friendlyName)
-  );
   ipcMain.handle('accounts:merge', (_, sourceId: string, targetId: string, memo?: string | null) =>
     accountService.mergeAccounts(sourceId, targetId, memo)
   );
+
+  // Account alias handlers
+  ipcMain.handle('accountAliases:getAll', () => accountAliasService.getAllAliases());
+  ipcMain.handle('accountAliases:getForAccount', (_, accountId: string) =>
+    accountAliasService.getAliasesForAccount(accountId)
+  );
+  ipcMain.handle('accountAliases:create', (_, accountId: string, rawName: string) =>
+    accountAliasService.createAlias(accountId, rawName)
+  );
+  ipcMain.handle('accountAliases:delete', (_, id: string) => {
+    accountAliasService.deleteAlias(id);
+    return { success: true };
+  });
 
   // Transaction handlers
   ipcMain.handle('transactions:getAll', () => transactionService.getAllTransactions());
@@ -372,10 +384,12 @@ function registerIPCHandlers() {
     projectionService.deleteProjection(id);
     return { success: true };
   });
-  ipcMain.handle('projections:getProjectedBalance', (_, targetDate: string) =>
-    projectionService.getProjectedBalance(targetDate)
+  ipcMain.handle('projections:getProjectedBalance', (_, targetDate: string, excludedIds?: string[]) =>
+    projectionService.getProjectedBalance(targetDate, excludedIds)
   );
-  ipcMain.handle('projections:getSeries', (_, months: number) => projectionService.getProjectionSeries(months));
+  ipcMain.handle('projections:getSeries', (_, months: number, excludedIds?: string[]) =>
+    projectionService.getProjectionSeries(months, excludedIds)
+  );
 
   // Database location handlers
   ipcMain.handle('dbLocation:get', () => ({

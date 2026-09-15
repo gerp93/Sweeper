@@ -9,6 +9,9 @@ export interface IncomeProjection {
   endDate: string | null;
   accountId: string | null;
   note: string | null;
+  // Only meaningful when frequency is 'monthly': ignore startDate's day-of-month and land
+  // each occurrence on whatever the last day of that month happens to be (28-31).
+  lastDayOfMonth: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -21,6 +24,7 @@ export interface CreateIncomeProjectionInput {
   endDate?: string | null;
   accountId?: string | null;
   note?: string | null;
+  lastDayOfMonth?: boolean;
 }
 
 export interface UpdateIncomeProjectionInput {
@@ -31,6 +35,7 @@ export interface UpdateIncomeProjectionInput {
   endDate?: string | null;
   accountId?: string | null;
   note?: string | null;
+  lastDayOfMonth?: boolean;
 }
 
 // A single point-in-time projection: today's real balance carried forward with planned
