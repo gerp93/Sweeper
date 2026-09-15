@@ -12,6 +12,8 @@ const FREQUENCY_LABELS: Record<ProjectionFrequency, string> = {
 };
 
 const HORIZON_OPTIONS = [3, 6, 12];
+// Must match BURN_LOOKBACK_MONTHS in projectionService.ts -- display-only, doesn't drive the calc.
+const BURN_LOOKBACK_MONTHS = 3;
 
 // A small dependency-free bar chart: one bar per month's projected truly-available balance,
 // diverging around a zero baseline. Bars below zero (a projected shortfall) use the same red
@@ -284,13 +286,18 @@ export default function Projections() {
                   ✓ No shortfall projected in the next {horizonMonths} months
                 </p>
               )}
+              <p className="text-muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+                Assumes {formatCurrency(Math.abs(series[0]?.monthlyBurnRate ?? 0))}/mo ordinary spending (trailing{' '}
+                {BURN_LOOKBACK_MONTHS}-month average, excluding accounts held back for an active Obligation) and
+                Obligations paid in full on their due date.
+              </p>
             </div>
             <table className="data-table" style={{ marginTop: 8 }}>
               <thead>
                 <tr>
                   <th>Month</th>
                   <th style={{ textAlign: 'right' }}>Projected Spendable</th>
-                  <th style={{ textAlign: 'right' }}>Obligated by then</th>
+                  <th style={{ textAlign: 'right' }}>Still Obligated</th>
                   <th style={{ textAlign: 'right' }}>Projected Truly Available</th>
                 </tr>
               </thead>
@@ -299,7 +306,7 @@ export default function Projections() {
                   <tr key={point.asOf}>
                     <td>{point.monthLabel}</td>
                     <td style={{ textAlign: 'right' }}>{formatCurrency(point.projectedSpendableBalance)}</td>
-                    <td style={{ textAlign: 'right' }}>{formatCurrency(point.obligationsDueByDate)}</td>
+                    <td style={{ textAlign: 'right' }}>{formatCurrency(point.obligationsStillOutstanding)}</td>
                     <td
                       style={{ textAlign: 'right' }}
                       className={point.projectedTrulyAvailable < 0 ? 'amount-negative' : undefined}
@@ -356,13 +363,15 @@ export default function Projections() {
                   <td>{formatDate(p.startDate)}</td>
                   <td>{p.endDate ? formatDate(p.endDate) : '—'}</td>
                   <td>{accountName(p.accountId) ?? '—'}</td>
-                  <td className="ledger-actions">
-                    <button className="btn-link" onClick={() => startEdit(p)}>
-                      Edit
-                    </button>
-                    <button className="btn-link btn-link-danger" onClick={() => handleDelete(p.id)}>
-                      Delete
-                    </button>
+                  <td>
+                    <div className="ledger-actions">
+                      <button className="btn-link" onClick={() => startEdit(p)}>
+                        Edit
+                      </button>
+                      <button className="btn-link btn-link-danger" onClick={() => handleDelete(p.id)}>
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

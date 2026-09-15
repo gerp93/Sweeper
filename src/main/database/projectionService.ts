@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { saveDatabase } from './schema';
 import { BalanceService } from './balanceService';
 import { ObligationService } from './obligationService';
+import { TransactionService } from './transactionService';
 
 function rowToProjection(columns: string[], row: any[]): IncomeProjection {
   const obj: any = {};
@@ -78,6 +79,20 @@ function lastDayOfMonthFor(dateStr: string): string {
   return `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 }
 
+function daysBetween(fromDate: string, toDate: string): number {
+  const [fy, fm, fd] = fromDate.split('-').map(Number);
+  const [ty, tm, td] = toDate.split('-').map(Number);
+  const from = Date.UTC(fy, fm - 1, fd);
+  const to = Date.UTC(ty, tm - 1, td);
+  return (to - from) / (1000 * 60 * 60 * 24);
+}
+
+// Fractional calendar months between two dates, using the average month length -- good
+// enough for a "rough estimate" burn-rate scale, not meant to be exact.
+function monthsBetween(fromDate: string, toDate: string): number {
+  return daysBetween(fromDate, toDate) / 30.4368;
+}
+
 // Every occurrence date of a projection landing in [windowStart, windowEnd], honoring the
 // projection's own end_date if it cuts the window shorter.
 export function expandOccurrences(
@@ -119,11 +134,14 @@ export function expandOccurrences(
   return dates;
 }
 
+const BURN_LOOKBACK_MONTHS = 3;
+
 export class ProjectionService {
   constructor(
     private db: Database,
     private balanceService: BalanceService,
-    private obligationService: ObligationService
+    private obligationService: ObligationService,
+    private transactionService: TransactionService
   ) {}
 
   getAllProjections(): IncomeProjection[] {
@@ -210,7 +228,9 @@ export class ProjectionService {
     saveDatabase(this.db);
   }
 
-  private obligationsDueBy(date: string): number {
+  // Obligation dollars (current remaining, across all obligations) whose due date falls at
+  // or before `date` -- i.e. assumed paid off, in cash, by then.
+  private obligationsPaidBy(date: string): number {
     return this.obligationService
       .getAllObligations()
       .flatMap((o) => o.dateGroups)
@@ -218,29 +238,67 @@ export class ProjectionService {
       .reduce((sum, g) => sum + g.remaining, 0);
   }
 
+  // Accounts holding money already spoken for by an unpaid Obligation -- their transactions
+  // are obligation payments/reserves, not everyday spending, so the burn rate excludes them.
+  private getObligationAccountIds(): Set<string> {
+    const ids = this.obligationService
+      .getAllObligations()
+      .filter((o) => o.remaining > 0 && o.accountId)
+      .map((o) => o.accountId as string);
+    return new Set(ids);
+  }
+
+  // Average monthly spend (negative) over the trailing lookback window, on accounts not tied
+  // to an active Obligation and excluding any transaction already allocated to one -- so
+  // Obligation payments (modeled separately via obligationsPaidBy) aren't double-counted here.
+  private getMonthlyBurnRate(): number {
+    const today = new Date().toISOString().slice(0, 10);
+    const windowStart = addMonthsClamped(today, -BURN_LOOKBACK_MONTHS);
+    const excludedAccountIds = this.getObligationAccountIds();
+
+    const spend = this.transactionService
+      .getAllTransactions()
+      .filter((tx) => tx.date >= windowStart && tx.date <= today)
+      .filter((tx) => tx.amount < 0)
+      .filter((tx) => tx.obligationId == null)
+      .filter((tx) => !tx.accountId || !excludedAccountIds.has(tx.accountId))
+      .reduce((sum, tx) => sum + tx.amount, 0);
+
+    return spend / BURN_LOOKBACK_MONTHS;
+  }
+
   getProjectedBalance(targetDate: string, excludedIds: string[] = []): ProjectedBalancePoint {
     const today = new Date().toISOString().slice(0, 10);
     const baseline = this.balanceService.getSpendableBalance(today);
     const excluded = new Set(excludedIds);
+    const isFuture = targetDate > today;
 
-    const projectedIncome =
-      targetDate > today
-        ? this.getAllProjections()
-            .filter((p) => !excluded.has(p.id))
-            .flatMap((p) => expandOccurrences(p, addDays(today, 1), targetDate).map(() => p.amount))
-            .reduce((sum, amount) => sum + amount, 0)
-        : 0;
+    const projectedIncome = isFuture
+      ? this.getAllProjections()
+          .filter((p) => !excluded.has(p.id))
+          .flatMap((p) => expandOccurrences(p, addDays(today, 1), targetDate).map(() => p.amount))
+          .reduce((sum, amount) => sum + amount, 0)
+      : 0;
 
-    const projectedSpendableBalance = baseline.balance + projectedIncome;
-    const obligationsDueByDate = this.obligationsDueBy(targetDate);
+    const monthlyBurnRate = this.getMonthlyBurnRate();
+    const projectedBurn = isFuture ? monthlyBurnRate * monthsBetween(today, targetDate) : 0;
+
+    const obligationsPaidByDate = this.obligationsPaidBy(targetDate);
+    const totalObligated = this.obligationService.getTotalObligated();
+    const obligationsStillOutstanding = Math.max(totalObligated - obligationsPaidByDate, 0);
+
+    const projectedSpendableBalance = baseline.balance + projectedIncome + projectedBurn - obligationsPaidByDate;
 
     return {
       asOf: targetDate,
       baselineBalance: baseline.balance,
       projectedIncome,
+      monthlyBurnRate,
+      projectedBurn,
+      obligationsPaidByDate,
+      obligationsStillOutstanding,
       projectedSpendableBalance,
-      obligationsDueByDate,
-      projectedTrulyAvailable: projectedSpendableBalance - obligationsDueByDate,
+      projectedTrulyAvailable: projectedSpendableBalance - obligationsStillOutstanding,
     };
   }
 

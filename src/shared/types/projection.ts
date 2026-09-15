@@ -39,14 +39,23 @@ export interface UpdateIncomeProjectionInput {
 }
 
 // A single point-in-time projection: today's real balance carried forward with planned
-// income, minus whatever Obligations will be due by that date. Always an estimate -- never
-// blended into the real "Truly Available" figure shown elsewhere in the app.
+// income, an assumed historical spending rate, and Obligations assumed paid off on their
+// due date. Always an estimate -- never blended into the real "Truly Available" figure
+// shown elsewhere in the app.
 export interface ProjectedBalancePoint {
   asOf: string;
   baselineBalance: number;
   projectedIncome: number;
+  // Negative. Average monthly spend over the trailing lookback window, excluding accounts
+  // linked to an active (unpaid) Obligation and any Obligation-allocated transaction.
+  monthlyBurnRate: number;
+  // Negative. monthlyBurnRate scaled to the number of months between today and asOf.
+  projectedBurn: number;
+  // Obligation dollars assumed paid off (cash out the door) by asOf.
+  obligationsPaidByDate: number;
+  // Obligation dollars not yet paid off by asOf -- still held back out of spendable balance.
+  obligationsStillOutstanding: number;
   projectedSpendableBalance: number;
-  obligationsDueByDate: number;
   projectedTrulyAvailable: number;
 }
 
