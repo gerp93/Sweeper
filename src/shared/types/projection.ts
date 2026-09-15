@@ -38,6 +38,15 @@ export interface UpdateIncomeProjectionInput {
   lastDayOfMonth?: boolean;
 }
 
+// Lets the caller preview "what if" a projection ran with a different spending assumption,
+// without saving anything -- never persisted, only affects the single calculation it's
+// passed to.
+export interface ProjectionScenarioOptions {
+  // Replaces the historical 3-month-average burn rate with this flat monthly figure
+  // (negative = spend). Omit or null to use the historical default.
+  burnRateOverride?: number | null;
+}
+
 // A single point-in-time projection: today's real balance carried forward with planned
 // income, an assumed historical spending rate, and Obligations assumed paid off on their
 // due date. Always an estimate -- never blended into the real "Truly Available" figure
@@ -46,8 +55,8 @@ export interface ProjectedBalancePoint {
   asOf: string;
   baselineBalance: number;
   projectedIncome: number;
-  // Negative. Average monthly spend over the trailing lookback window, excluding accounts
-  // linked to an active (unpaid) Obligation and any Obligation-allocated transaction.
+  // Negative. The monthly spend rate actually used for this point -- either the historical
+  // trailing-average or a caller-supplied override (see ProjectionScenarioOptions).
   monthlyBurnRate: number;
   // Negative. monthlyBurnRate scaled to the number of months between today and asOf.
   projectedBurn: number;
@@ -64,4 +73,7 @@ export interface ProjectionSeriesPoint extends ProjectedBalancePoint {
   // Obligation dollars whose due date falls within this calendar month specifically (not
   // cumulative like obligationsPaidByDate), using current remaining amounts.
   obligationsDueThisMonth: number;
+  // Projected income landing within this calendar month specifically (not cumulative like
+  // projectedIncome).
+  projectedIncomeThisMonth: number;
 }

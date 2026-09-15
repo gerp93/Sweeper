@@ -5,6 +5,7 @@ import {
   UpdateIncomeProjectionInput,
   ProjectedBalancePoint,
   ProjectionSeriesPoint,
+  ProjectionScenarioOptions,
 } from '../../shared/types/projection';
 import { v4 as uuidv4 } from 'uuid';
 import { saveDatabase } from './schema';
@@ -267,7 +268,11 @@ export class ProjectionService {
     return spend / BURN_LOOKBACK_MONTHS;
   }
 
-  getProjectedBalance(targetDate: string, excludedIds: string[] = []): ProjectedBalancePoint {
+  getProjectedBalance(
+    targetDate: string,
+    excludedIds: string[] = [],
+    options: ProjectionScenarioOptions = {}
+  ): ProjectedBalancePoint {
     const today = new Date().toISOString().slice(0, 10);
     const baseline = this.balanceService.getSpendableBalance(today);
     const excluded = new Set(excludedIds);
@@ -280,7 +285,7 @@ export class ProjectionService {
           .reduce((sum, amount) => sum + amount, 0)
       : 0;
 
-    const monthlyBurnRate = this.getMonthlyBurnRate();
+    const monthlyBurnRate = options.burnRateOverride ?? this.getMonthlyBurnRate();
     const projectedBurn = isFuture ? monthlyBurnRate * monthsBetween(today, targetDate) : 0;
 
     const obligationsPaidByDate = this.obligationsPaidBy(targetDate);
@@ -305,10 +310,15 @@ export class ProjectionService {
   // One point per month-end, starting with the current (partial) month through the next
   // `months` months, so the UI can render a table in a single call instead of one round trip
   // per month.
-  getProjectionSeries(months: number, excludedIds: string[] = []): ProjectionSeriesPoint[] {
+  getProjectionSeries(
+    months: number,
+    excludedIds: string[] = [],
+    options: ProjectionScenarioOptions = {}
+  ): ProjectionSeriesPoint[] {
     const today = new Date().toISOString().slice(0, 10);
     const [y, m] = today.split('-').map(Number);
     const points: ProjectionSeriesPoint[] = [];
+    let previousIncome = 0;
 
     for (let i = 0; i <= months; i++) {
       const totalMonths = (m - 1) + i;
@@ -325,7 +335,11 @@ export class ProjectionService {
 
       const obligationsDueThisMonth = this.obligationsPaidBy(monthEnd) - this.obligationsPaidBy(addDays(monthStart, -1));
 
-      points.push({ ...this.getProjectedBalance(monthEnd, excludedIds), monthLabel, obligationsDueThisMonth });
+      const point = this.getProjectedBalance(monthEnd, excludedIds, options);
+      const projectedIncomeThisMonth = point.projectedIncome - previousIncome;
+      previousIncome = point.projectedIncome;
+
+      points.push({ ...point, monthLabel, obligationsDueThisMonth, projectedIncomeThisMonth });
     }
 
     return points;

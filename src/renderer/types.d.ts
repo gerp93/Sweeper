@@ -19,6 +19,7 @@ import {
   UpdateIncomeProjectionInput,
   ProjectedBalancePoint,
   ProjectionSeriesPoint,
+  ProjectionScenarioOptions,
 } from '../shared/types/projection';
 
 declare global {
@@ -95,8 +96,16 @@ declare global {
         create: (input: CreateIncomeProjectionInput) => Promise<IncomeProjection>;
         update: (id: string, input: UpdateIncomeProjectionInput) => Promise<IncomeProjection>;
         delete: (id: string) => Promise<{ success: boolean }>;
-        getProjectedBalance: (targetDate: string, excludedIds?: string[]) => Promise<ProjectedBalancePoint>;
-        getSeries: (months: number, excludedIds?: string[]) => Promise<ProjectionSeriesPoint[]>;
+        getProjectedBalance: (
+          targetDate: string,
+          excludedIds?: string[],
+          options?: ProjectionScenarioOptions
+        ) => Promise<ProjectedBalancePoint>;
+        getSeries: (
+          months: number,
+          excludedIds?: string[],
+          options?: ProjectionScenarioOptions
+        ) => Promise<ProjectionSeriesPoint[]>;
       };
       dbLocation: {
         get: () => Promise<{ path: string; isDefault: boolean; defaultPath: string }>;
