@@ -309,7 +309,9 @@ export default function Transactions() {
         <>
           <div className="card marquee">
             <div className="label">HELOC Spendable Balance</div>
-            <div className="value">{overallSpendable ? formatCurrency(overallSpendable.balance) : '—'}</div>
+            <div className={overallSpendable && overallSpendable.balance < 0 ? 'value amount-negative' : 'value'}>
+              {overallSpendable ? formatCurrency(overallSpendable.balance) : '—'}
+            </div>
             {overallSpendable?.anchor ? (
               <div className="sub">
                 Starting from {formatCurrency(overallSpendable.anchor.balance)} on{' '}
@@ -324,7 +326,11 @@ export default function Transactions() {
             {totalObligated > 0 && overallSpendable && (
               <div className="marquee-secondary">
                 <div className="label">Truly Available</div>
-                <div className="secondary-value">
+                <div
+                  className={
+                    overallSpendable.balance - totalObligated < 0 ? 'secondary-value amount-negative' : 'secondary-value'
+                  }
+                >
                   {formatCurrency(overallSpendable.balance - totalObligated)}
                 </div>
                 <div className="sub">
@@ -358,7 +364,9 @@ export default function Transactions() {
             {currentBalanceOwed != null && (
               <div className="card">
                 <div className="stat-label">Current Balance Owed</div>
-                <div className="stat-value">{formatCurrency(currentBalanceOwed)}</div>
+                <div className={`stat-value ${currentBalanceOwed < 0 ? 'amount-negative' : ''}`}>
+                  {formatCurrency(currentBalanceOwed)}
+                </div>
               </div>
             )}
           </div>
@@ -512,7 +520,9 @@ export default function Transactions() {
                 <tbody>
                   <tr className="ledger-marker">
                     <td colSpan={5}>Beginning of month</td>
-                    <td style={{ textAlign: 'right' }}>{bom && formatCurrency(bom.balance)}</td>
+                    <td style={{ textAlign: 'right' }} className={bom && bom.balance < 0 ? 'amount-negative' : undefined}>
+                      {bom && formatCurrency(bom.balance)}
+                    </td>
                     <td></td>
                     <td></td>
                   </tr>
@@ -536,7 +546,9 @@ export default function Transactions() {
                         >
                           {formatCurrency(tx.amount)}
                         </td>
-                        <td style={{ textAlign: 'right' }}>{formatCurrency(balance)}</td>
+                        <td style={{ textAlign: 'right' }} className={balance < 0 ? 'amount-negative' : undefined}>
+                          {formatCurrency(balance)}
+                        </td>
                         <td>{renderReconciledCell(tx)}</td>
                         <td>
                           <div className="ledger-actions">
@@ -560,7 +572,9 @@ export default function Transactions() {
 
                   <tr className="ledger-marker">
                     <td colSpan={5}>End of month</td>
-                    <td style={{ textAlign: 'right' }}>{eom && formatCurrency(eom.balance)}</td>
+                    <td style={{ textAlign: 'right' }} className={eom && eom.balance < 0 ? 'amount-negative' : undefined}>
+                      {eom && formatCurrency(eom.balance)}
+                    </td>
                     <td></td>
                     <td></td>
                   </tr>
