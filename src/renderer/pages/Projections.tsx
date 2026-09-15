@@ -20,9 +20,10 @@ const HORIZON_OPTIONS = [3, 6, 12];
 // Must match BURN_LOOKBACK_MONTHS in projectionService.ts -- display-only, doesn't drive the calc.
 const BURN_LOOKBACK_MONTHS = 3;
 
-// A small dependency-free bar chart: one bar per month's projected truly-available balance,
-// diverging around a zero baseline. Bars below zero (a projected shortfall) use the same red
-// token as amount-negative everywhere else in the app; the first shortfall gets a marker.
+// A small dependency-free bar chart: one bar per month's projected spendable balance --
+// actual cash in the account, the point where you'd genuinely run out of money -- diverging
+// around a zero baseline. Bars below zero (a projected shortfall) use the same red token as
+// amount-negative everywhere else in the app; the first shortfall gets a marker.
 function ShortfallChart({ series }: { series: ProjectionSeriesPoint[] }) {
   const height = 140;
   const paddingTop = 20;
@@ -32,23 +33,23 @@ function ShortfallChart({ series }: { series: ProjectionSeriesPoint[] }) {
   const width = Math.max(320, series.length * 70);
   const barWidth = (width - barGap * (series.length + 1)) / series.length;
 
-  const values = series.map((p) => p.projectedTrulyAvailable);
+  const values = series.map((p) => p.projectedSpendableBalance);
   const maxVal = Math.max(...values, 0);
   const minVal = Math.min(...values, 0);
   const range = maxVal - minVal || 1;
   const yFor = (v: number) => paddingTop + plotHeight - ((v - minVal) / range) * plotHeight;
   const yZero = yFor(0);
 
-  const shortfallIndex = series.findIndex((p) => p.projectedTrulyAvailable < 0);
+  const shortfallIndex = series.findIndex((p) => p.projectedSpendableBalance < 0);
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height, display: 'block' }}>
       <line x1={0} y1={yZero} x2={width} y2={yZero} stroke="var(--color-border)" strokeWidth={1} />
       {series.map((p, i) => {
         const x = barGap + i * (barWidth + barGap);
-        const yTop = Math.min(yFor(p.projectedTrulyAvailable), yZero);
-        const barHeight = Math.max(2, Math.abs(yFor(p.projectedTrulyAvailable) - yZero));
-        const negative = p.projectedTrulyAvailable < 0;
+        const yTop = Math.min(yFor(p.projectedSpendableBalance), yZero);
+        const barHeight = Math.max(2, Math.abs(yFor(p.projectedSpendableBalance) - yZero));
+        const negative = p.projectedSpendableBalance < 0;
         const isCallout = i === shortfallIndex || i === series.length - 1;
         return (
           <g key={p.asOf}>
@@ -69,7 +70,7 @@ function ShortfallChart({ series }: { series: ProjectionSeriesPoint[] }) {
                 fontWeight={600}
                 fill={negative ? 'var(--color-accent-red)' : 'var(--color-text)'}
               >
-                {formatCurrency(p.projectedTrulyAvailable)}
+                {formatCurrency(p.projectedSpendableBalance)}
               </text>
             )}
             <text x={x + barWidth / 2} y={height - 6} textAnchor="middle" fontSize={10} fill="var(--color-accent-blue)">
@@ -239,7 +240,7 @@ export default function Projections() {
   }
 
   const lastPoint = series.length > 0 ? series[series.length - 1] : null;
-  const shortfallPoint = series.find((p) => p.projectedTrulyAvailable < 0) ?? null;
+  const shortfallPoint = series.find((p) => p.projectedSpendableBalance < 0) ?? null;
 
   return (
     <div>
@@ -304,7 +305,7 @@ export default function Projections() {
               <ShortfallChart series={series} />
               {shortfallPoint ? (
                 <p className="amount-negative" style={{ fontSize: 13, fontWeight: 600, margin: '4px 0 0' }}>
-                  ⚠ Projected to run short around {shortfallPoint.monthLabel} ({formatCurrency(shortfallPoint.projectedTrulyAvailable)})
+                  ⚠ Projected to run short around {shortfallPoint.monthLabel} ({formatCurrency(shortfallPoint.projectedSpendableBalance)})
                 </p>
               ) : (
                 <p className="amount-positive" style={{ fontSize: 13, fontWeight: 600, margin: '4px 0 0' }}>
