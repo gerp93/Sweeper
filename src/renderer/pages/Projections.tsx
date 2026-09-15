@@ -296,16 +296,23 @@ export default function Projections() {
               <thead>
                 <tr>
                   <th>Month</th>
-                  <th style={{ textAlign: 'right' }}>Projected Spendable</th>
-                  <th style={{ textAlign: 'right' }}>Still Obligated</th>
-                  <th style={{ textAlign: 'right' }}>Projected Truly Available</th>
+                  <th style={{ textAlign: 'right' }}>Projected Spendable at Month End</th>
+                  <th style={{ textAlign: 'right' }}>Obligations Due This Month</th>
+                  <th style={{ textAlign: 'right' }}>Still Obligated at Month End</th>
+                  <th style={{ textAlign: 'right' }}>Projected Truly Available at Month End</th>
                 </tr>
               </thead>
               <tbody>
                 {series.map((point) => (
                   <tr key={point.asOf}>
                     <td>{point.monthLabel}</td>
-                    <td style={{ textAlign: 'right' }}>{formatCurrency(point.projectedSpendableBalance)}</td>
+                    <td
+                      style={{ textAlign: 'right' }}
+                      className={point.projectedSpendableBalance < 0 ? 'amount-negative' : undefined}
+                    >
+                      {formatCurrency(point.projectedSpendableBalance)}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>{formatCurrency(point.obligationsDueThisMonth)}</td>
                     <td style={{ textAlign: 'right' }}>{formatCurrency(point.obligationsStillOutstanding)}</td>
                     <td
                       style={{ textAlign: 'right' }}
