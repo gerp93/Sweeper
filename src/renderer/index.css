@@ -496,6 +496,24 @@ table {
   white-space: nowrap;
 }
 
+/* A Recurring Bill's expected-but-not-yet-real occurrence -- never a real transaction, just a
+   forward-looking reminder computed live. */
+.ledger-row-virtual td {
+  font-style: italic;
+  opacity: 0.7;
+  border-top: 1px dashed var(--color-primary-action-hover);
+  border-bottom: 1px dashed var(--color-primary-action-hover);
+}
+
+/* Same, but its expected date has already passed with nothing confirmed against it -- flagged
+   for the user to check (autopay missed? already paid but not yet imported/confirmed?). */
+.ledger-row-overdue td {
+  font-style: italic;
+  border-top: 1px dashed var(--color-accent-red);
+  border-bottom: 1px dashed var(--color-accent-red);
+  background: rgba(220, 38, 38, 0.08);
+}
+
 .btn-link {
   background: none;
   border: none;

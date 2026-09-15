@@ -104,6 +104,10 @@ export class AccountService {
     const trimmedMemo = memo?.trim();
 
     this.db.run(`UPDATE account_aliases SET account_id = ? WHERE account_id = ?`, [targetId, sourceId]);
+    // recurring_bills.account_id has ON DELETE SET NULL for a fresh FK, which would silently
+    // orphan a bill's account link when the source account gets deleted below -- reassign it
+    // explicitly first, same as aliases and transactions, so the merge preserves the link.
+    this.db.run(`UPDATE recurring_bills SET account_id = ? WHERE account_id = ?`, [targetId, sourceId]);
 
     if (trimmedMemo) {
       // Only the transactions moving over from the source account get the memo appended --

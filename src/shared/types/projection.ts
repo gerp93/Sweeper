@@ -43,8 +43,14 @@ export interface UpdateIncomeProjectionInput {
 // passed to.
 export interface ProjectionScenarioOptions {
   // Replaces the historical 3-month-average burn rate with this flat monthly figure
-  // (negative = spend). Omit or null to use the historical default.
+  // (negative = spend). Omit or null to use the historical default. Ignored when
+  // burnRateMode is 'recurringBills'.
   burnRateOverride?: number | null;
+  // 'recurringBills' replaces the flat historical/custom burn rate entirely with the real sum
+  // of active Recurring Bills' expected occurrences in the actual window being calculated --
+  // not a flat monthly figure scaled by months elapsed, since a non-monthly bill would be
+  // misrepresented by that scaling. Omit or 'historical' for the existing behavior.
+  burnRateMode?: 'historical' | 'custom' | 'recurringBills';
 }
 
 // A single point-in-time projection: today's real balance carried forward with planned

@@ -6,6 +6,7 @@ import { SpendableBalance } from '../../shared/types/balanceAnchor';
 import { Reconciliation } from '../../shared/types/reconciliation';
 import { HelocSettings } from '../../shared/types/helocSettings';
 import { Obligation } from '../../shared/types/obligation';
+import { RecurringBill, RecurringBillOccurrence } from '../../shared/types/recurringBill';
 import TransactionForm from '../components/TransactionForm';
 import MonthNavSidebar from '../components/MonthNavSidebar';
 import { useSetRightSidebar } from '../context/RightSidebarContext';
@@ -24,6 +25,8 @@ import {
 type ViewMode = 'month' | 'all';
 type SortKey = 'date' | 'description' | 'account' | 'amount';
 type SortDir = 'asc' | 'desc';
+
+type LedgerRow = { kind: 'real'; tx: Transaction } | { kind: 'virtual'; occurrence: RecurringBillOccurrence };
 
 interface Filters {
   description: string;
@@ -63,7 +66,10 @@ export default function Transactions() {
   const [helocSettings, setHelocSettings] = useState<HelocSettings | null>(null);
   const [overallSpendable, setOverallSpendable] = useState<SpendableBalance | null>(null);
   const [obligations, setObligations] = useState<Obligation[]>([]);
+  const [recurringBills, setRecurringBills] = useState<RecurringBill[]>([]);
+  const [billOccurrences, setBillOccurrences] = useState<RecurringBillOccurrence[]>([]);
   const [editing, setEditing] = useState<Transaction | null>(null);
+  const [prefillOccurrence, setPrefillOccurrence] = useState<RecurringBillOccurrence | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -89,6 +95,16 @@ export default function Transactions() {
   }, [currentMonth]);
 
   useEffect(() => {
+    // Only the current or a future month gets Recurring Bill reminders -- a past month should
+    // show only what actually happened.
+    if (currentMonth && currentMonth >= monthKey(todayIso())) {
+      loadBillOccurrences(currentMonth);
+    } else {
+      setBillOccurrences([]);
+    }
+  }, [currentMonth, recurringBills]);
+
+  useEffect(() => {
     setPage(1);
   }, [filters, pageSize, sortKey, sortDir, viewMode]);
 
@@ -107,13 +123,14 @@ export default function Transactions() {
 
   async function load() {
     setLoading(true);
-    const [txs, accts, recons, heloc, spendable, obligationList] = await Promise.all([
+    const [txs, accts, recons, heloc, spendable, obligationList, billList] = await Promise.all([
       window.electronAPI.transactions.getAll(),
       window.electronAPI.accounts.getAll(),
       window.electronAPI.reconciliations.getAll(),
       window.electronAPI.helocSettings.get(),
       window.electronAPI.balance.getSpendable(),
       window.electronAPI.obligations.getAll(),
+      window.electronAPI.recurringBills.getAll(),
     ]);
     setTransactions(txs);
     setAccounts(accts);
@@ -121,6 +138,7 @@ export default function Transactions() {
     setHelocSettings(heloc);
     setOverallSpendable(spendable);
     setObligations(obligationList);
+    setRecurringBills(billList);
     setLoading(false);
 
     if (currentMonth === null) {
@@ -143,6 +161,14 @@ export default function Transactions() {
     setBalancesLoading(false);
   }
 
+  async function loadBillOccurrences(month: string) {
+    const occurrences = await window.electronAPI.recurringBills.getMonthlyOccurrences(
+      firstDayOfMonth(month),
+      lastDayOfMonth(month)
+    );
+    setBillOccurrences(occurrences);
+  }
+
   async function handleSave(input: CreateTransactionInput) {
     if (editing) {
       await window.electronAPI.transactions.update(editing.id, input);
@@ -151,8 +177,15 @@ export default function Transactions() {
     }
     setShowForm(false);
     setEditing(null);
+    setPrefillOccurrence(null);
     await load();
     if (currentMonth) await loadBalances(currentMonth);
+  }
+
+  function addRealTransactionFor(occurrence: RecurringBillOccurrence) {
+    setEditing(null);
+    setPrefillOccurrence(occurrence);
+    setShowForm(true);
   }
 
   async function handleDelete(id: string) {
@@ -232,13 +265,39 @@ export default function Transactions() {
       .sort((a, b) => (a.date === b.date ? a.createdAt.localeCompare(b.createdAt) : a.date < b.date ? -1 : 1));
   }, [transactions, currentMonth]);
 
-  const ledgerRows = useMemo(() => {
-    let running = bom?.balance ?? 0;
-    return monthTransactions.map((tx) => {
-      running += tx.amount;
-      return { tx, balance: running };
+  // A "reconciled" occurrence already has its real transaction showing in monthTransactions --
+  // showing a virtual row for it too would duplicate the line item. Only occurrences still
+  // waiting on a real transaction become virtual rows.
+  const virtualOccurrences = useMemo(
+    () => billOccurrences.filter((o) => o.status !== 'reconciled'),
+    [billOccurrences]
+  );
+
+  const mergedRows = useMemo(() => {
+    const real: LedgerRow[] = monthTransactions.map((tx) => ({ kind: 'real', tx }));
+    const virtual: LedgerRow[] = virtualOccurrences.map((occurrence) => ({ kind: 'virtual', occurrence }));
+    return [...real, ...virtual].sort((a, b) => {
+      const dateA = a.kind === 'real' ? a.tx.date : a.occurrence.expectedDate;
+      const dateB = b.kind === 'real' ? b.tx.date : b.occurrence.expectedDate;
+      if (dateA !== dateB) return dateA < dateB ? -1 : 1;
+      // Real rows sort ahead of a virtual row landing on the same date.
+      return a.kind === 'real' ? -1 : b.kind === 'real' ? 1 : 0;
     });
-  }, [monthTransactions, bom]);
+  }, [monthTransactions, virtualOccurrences]);
+
+  const ledgerRows = useMemo(() => {
+    // Only real transactions ever move the running balance -- a virtual row shows a preview
+    // (running + its expected amount) without writing back into `running`, so every real row
+    // after it still starts from the true, untouched balance.
+    let running = bom?.balance ?? 0;
+    return mergedRows.map((row) => {
+      if (row.kind === 'real') {
+        running += row.tx.amount;
+        return { ...row, balance: running };
+      }
+      return { ...row, balance: running + row.occurrence.expectedAmount };
+    });
+  }, [mergedRows, bom]);
 
   const netCashFlow = bom && eom ? eom.balance - bom.balance : monthTransactions.reduce((s, t) => s + t.amount, 0);
 
@@ -379,6 +438,7 @@ export default function Transactions() {
           className="btn btn-primary"
           onClick={() => {
             setEditing(null);
+            setPrefillOccurrence(null);
             setShowForm(true);
           }}
         >
@@ -534,40 +594,81 @@ export default function Transactions() {
                       </td>
                     </tr>
                   ) : (
-                    ledgerRows.map(({ tx, balance }) => (
-                      <tr key={tx.id}>
-                        <td>{formatDate(tx.date)}</td>
-                        <td>{tx.description}</td>
-                        <td>{accountName(tx.accountId)}</td>
-                        <td>{renderMemoInput(tx)}</td>
-                        <td
-                          style={{ textAlign: 'right' }}
-                          className={tx.amount >= 0 ? 'amount-positive' : 'amount-negative'}
-                        >
-                          {formatCurrency(tx.amount)}
-                        </td>
-                        <td style={{ textAlign: 'right' }} className={balance < 0 ? 'amount-negative' : undefined}>
-                          {formatCurrency(balance)}
-                        </td>
-                        <td>{renderReconciledCell(tx)}</td>
-                        <td>
-                          <div className="ledger-actions">
-                            <button
-                              className="btn-link"
-                              onClick={() => {
-                                setEditing(tx);
-                                setShowForm(true);
-                              }}
+                    ledgerRows.map((row) => {
+                      if (row.kind === 'virtual') {
+                        const { occurrence, balance } = row;
+                        const overdue = occurrence.status === 'overdue';
+                        return (
+                          <tr
+                            key={`virtual-${occurrence.billId}-${occurrence.expectedDate}`}
+                            className={overdue ? 'ledger-row-overdue' : 'ledger-row-virtual'}
+                          >
+                            <td>{formatDate(occurrence.expectedDate)}</td>
+                            <td>
+                              {occurrence.billLabel} ({overdue ? `overdue — expected ${formatDate(occurrence.expectedDate)}` : 'expected'})
+                            </td>
+                            <td>
+                              {accountName(recurringBills.find((b) => b.id === occurrence.billId)?.accountId ?? null)}
+                            </td>
+                            <td></td>
+                            <td
+                              style={{ textAlign: 'right' }}
+                              className={occurrence.expectedAmount >= 0 ? 'amount-positive' : 'amount-negative'}
                             >
-                              Edit
-                            </button>
-                            <button className="btn-link btn-link-danger" onClick={() => handleDelete(tx.id)}>
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                              {formatCurrency(occurrence.expectedAmount)}
+                            </td>
+                            <td style={{ textAlign: 'right' }} className={balance < 0 ? 'amount-negative' : undefined}>
+                              {formatCurrency(balance)}
+                            </td>
+                            <td>—</td>
+                            <td>
+                              <div className="ledger-actions">
+                                <button className="btn-link" onClick={() => addRealTransactionFor(occurrence)}>
+                                  + Add real transaction
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      const { tx, balance } = row;
+                      return (
+                        <tr key={tx.id}>
+                          <td>{formatDate(tx.date)}</td>
+                          <td>{tx.description}</td>
+                          <td>{accountName(tx.accountId)}</td>
+                          <td>{renderMemoInput(tx)}</td>
+                          <td
+                            style={{ textAlign: 'right' }}
+                            className={tx.amount >= 0 ? 'amount-positive' : 'amount-negative'}
+                          >
+                            {formatCurrency(tx.amount)}
+                          </td>
+                          <td style={{ textAlign: 'right' }} className={balance < 0 ? 'amount-negative' : undefined}>
+                            {formatCurrency(balance)}
+                          </td>
+                          <td>{renderReconciledCell(tx)}</td>
+                          <td>
+                            <div className="ledger-actions">
+                              <button
+                                className="btn-link"
+                                onClick={() => {
+                                  setEditing(tx);
+                                  setPrefillOccurrence(null);
+                                  setShowForm(true);
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button className="btn-link btn-link-danger" onClick={() => handleDelete(tx.id)}>
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
 
                   <tr className="ledger-marker">
@@ -695,11 +796,23 @@ export default function Transactions() {
           transaction={editing ?? undefined}
           accounts={accounts}
           obligations={obligations}
-          defaultDate={editing ? undefined : newTransactionDate}
+          recurringBills={recurringBills}
+          defaultDate={editing ? undefined : prefillOccurrence?.expectedDate ?? newTransactionDate}
+          defaultValues={
+            prefillOccurrence
+              ? {
+                  description: prefillOccurrence.billLabel,
+                  accountId: recurringBills.find((b) => b.id === prefillOccurrence.billId)?.accountId ?? null,
+                  amount: prefillOccurrence.expectedAmount,
+                  recurringBillId: prefillOccurrence.billId,
+                }
+              : undefined
+          }
           onSave={handleSave}
           onCancel={() => {
             setShowForm(false);
             setEditing(null);
+            setPrefillOccurrence(null);
           }}
         />
       )}

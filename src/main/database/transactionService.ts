@@ -19,6 +19,7 @@ function rowToTransaction(columns: string[], row: any[]): Transaction {
     category: obj.category,
     importBatchId: obj.importBatchId,
     obligationId: obj.obligationId,
+    recurringBillId: obj.recurringBillId,
     createdAt: obj.createdAt,
     updatedAt: obj.updatedAt,
   };
@@ -35,6 +36,7 @@ const SELECT_COLUMNS = `
   category,
   import_batch_id as importBatchId,
   obligation_id as obligationId,
+  recurring_bill_id as recurringBillId,
   created_at as createdAt,
   updated_at as updatedAt
 `;
@@ -73,8 +75,8 @@ export class TransactionService {
 
     this.db.run(
       `INSERT INTO transactions (
-        id, account_id, date, description, ref_check, amount, memo, category, import_batch_id, obligation_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, account_id, date, description, ref_check, amount, memo, category, import_batch_id, obligation_id, recurring_bill_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.accountId,
@@ -86,6 +88,7 @@ export class TransactionService {
         input.category ?? null,
         input.importBatchId ?? null,
         input.obligationId ?? null,
+        input.recurringBillId ?? null,
         now,
         now,
       ]
@@ -103,8 +106,8 @@ export class TransactionService {
       const now = new Date().toISOString();
       this.db.run(
         `INSERT INTO transactions (
-          id, account_id, date, description, ref_check, amount, memo, category, import_batch_id, obligation_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          id, account_id, date, description, ref_check, amount, memo, category, import_batch_id, obligation_id, recurring_bill_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           input.accountId,
@@ -116,6 +119,7 @@ export class TransactionService {
           input.category ?? null,
           input.importBatchId ?? null,
           input.obligationId ?? null,
+          input.recurringBillId ?? null,
           now,
           now,
         ]
@@ -168,6 +172,10 @@ export class TransactionService {
     if (input.obligationId !== undefined) {
       updates.push('obligation_id = ?');
       params.push(input.obligationId);
+    }
+    if (input.recurringBillId !== undefined) {
+      updates.push('recurring_bill_id = ?');
+      params.push(input.recurringBillId);
     }
 
     updates.push('updated_at = ?');
