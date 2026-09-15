@@ -12,7 +12,7 @@ import {
   CreateObligationLineItemInput,
   UpdateObligationLineItemInput,
 } from '../shared/types/obligation';
-import { CreateIncomeProjectionInput, UpdateIncomeProjectionInput } from '../shared/types/projection';
+import { CreateIncomeProjectionInput, UpdateIncomeProjectionInput, ProjectionScenarioOptions } from '../shared/types/projection';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   accounts: {
@@ -100,10 +100,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     create: (input: CreateIncomeProjectionInput) => ipcRenderer.invoke('projections:create', input),
     update: (id: string, input: UpdateIncomeProjectionInput) => ipcRenderer.invoke('projections:update', id, input),
     delete: (id: string) => ipcRenderer.invoke('projections:delete', id),
-    getProjectedBalance: (targetDate: string, excludedIds?: string[]) =>
-      ipcRenderer.invoke('projections:getProjectedBalance', targetDate, excludedIds),
-    getSeries: (months: number, excludedIds?: string[]) =>
-      ipcRenderer.invoke('projections:getSeries', months, excludedIds),
+    getProjectedBalance: (targetDate: string, excludedIds?: string[], options?: ProjectionScenarioOptions) =>
+      ipcRenderer.invoke('projections:getProjectedBalance', targetDate, excludedIds, options),
+    getSeries: (months: number, excludedIds?: string[], options?: ProjectionScenarioOptions) =>
+      ipcRenderer.invoke('projections:getSeries', months, excludedIds, options),
   },
 
   dbLocation: {

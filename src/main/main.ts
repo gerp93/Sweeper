@@ -36,7 +36,7 @@ import {
   CreateObligationLineItemInput,
   UpdateObligationLineItemInput,
 } from '../shared/types/obligation';
-import { CreateIncomeProjectionInput, UpdateIncomeProjectionInput } from '../shared/types/projection';
+import { CreateIncomeProjectionInput, UpdateIncomeProjectionInput, ProjectionScenarioOptions } from '../shared/types/projection';
 import { Database } from 'sql.js';
 
 pinUserDataPath();
@@ -384,11 +384,15 @@ function registerIPCHandlers() {
     projectionService.deleteProjection(id);
     return { success: true };
   });
-  ipcMain.handle('projections:getProjectedBalance', (_, targetDate: string, excludedIds?: string[]) =>
-    projectionService.getProjectedBalance(targetDate, excludedIds)
+  ipcMain.handle(
+    'projections:getProjectedBalance',
+    (_, targetDate: string, excludedIds?: string[], options?: ProjectionScenarioOptions) =>
+      projectionService.getProjectedBalance(targetDate, excludedIds, options)
   );
-  ipcMain.handle('projections:getSeries', (_, months: number, excludedIds?: string[]) =>
-    projectionService.getProjectionSeries(months, excludedIds)
+  ipcMain.handle(
+    'projections:getSeries',
+    (_, months: number, excludedIds?: string[], options?: ProjectionScenarioOptions) =>
+      projectionService.getProjectionSeries(months, excludedIds, options)
   );
 
   // Database location handlers

@@ -113,7 +113,7 @@ export default function ReconciliationPage() {
         <div className="stat-row" style={{ marginTop: 4, marginBottom: 12 }}>
           <div className="card">
             <div className="stat-label">Sweeper's Computed Balance</div>
-            <div className="stat-value">
+            <div className={`stat-value ${computed && computed.balance < 0 ? 'amount-negative' : ''}`}>
               {computedLoading ? '…' : computed ? formatCurrency(computed.balance) : '—'}
             </div>
           </div>
@@ -167,8 +167,15 @@ export default function ReconciliationPage() {
               {reconciliations.map((r) => (
                 <tr key={r.id}>
                   <td>{formatDate(r.asOfDate)}</td>
-                  <td style={{ textAlign: 'right' }}>{formatCurrency(r.bankBalance)}</td>
-                  <td style={{ textAlign: 'right' }}>{formatCurrency(r.computedBalance)}</td>
+                  <td style={{ textAlign: 'right' }} className={r.bankBalance < 0 ? 'amount-negative' : undefined}>
+                    {formatCurrency(r.bankBalance)}
+                  </td>
+                  <td
+                    style={{ textAlign: 'right' }}
+                    className={r.computedBalance < 0 ? 'amount-negative' : undefined}
+                  >
+                    {formatCurrency(r.computedBalance)}
+                  </td>
                   <td
                     style={{ textAlign: 'right' }}
                     className={Math.round(r.difference * 100) !== 0 ? 'amount-negative' : undefined}

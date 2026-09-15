@@ -251,7 +251,9 @@ export default function Obligations() {
       <div className="stat-row" style={{ marginTop: 12, marginBottom: 20 }}>
         <div className="card">
           <div className="stat-label">HELOC Spendable Balance</div>
-          <div className="stat-value">{spendable ? formatCurrency(spendable.balance) : '—'}</div>
+          <div className={`stat-value ${spendable && spendable.balance < 0 ? 'amount-negative' : ''}`}>
+            {spendable ? formatCurrency(spendable.balance) : '—'}
+          </div>
         </div>
         <div className="card">
           <div className="stat-label">Total Obligated</div>

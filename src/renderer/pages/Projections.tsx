@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { IncomeProjection, ProjectionFrequency, ProjectionSeriesPoint } from '../../shared/types/projection';
+import {
+  IncomeProjection,
+  ProjectionFrequency,
+  ProjectionSeriesPoint,
+  ProjectionScenarioOptions,
+} from '../../shared/types/projection';
 import { Account } from '../../shared/types/account';
 import CurrencyInput from '../components/CurrencyInput';
 import { formatCurrency, formatDate, todayIso } from '../utils/format';
@@ -15,9 +20,10 @@ const HORIZON_OPTIONS = [3, 6, 12];
 // Must match BURN_LOOKBACK_MONTHS in projectionService.ts -- display-only, doesn't drive the calc.
 const BURN_LOOKBACK_MONTHS = 3;
 
-// A small dependency-free bar chart: one bar per month's projected truly-available balance,
-// diverging around a zero baseline. Bars below zero (a projected shortfall) use the same red
-// token as amount-negative everywhere else in the app; the first shortfall gets a marker.
+// A small dependency-free bar chart: one bar per month's projected spendable balance --
+// actual cash in the account, the point where you'd genuinely run out of money -- diverging
+// around a zero baseline. Bars below zero (a projected shortfall) use the same red token as
+// amount-negative everywhere else in the app; the first shortfall gets a marker.
 function ShortfallChart({ series }: { series: ProjectionSeriesPoint[] }) {
   const height = 140;
   const paddingTop = 20;
@@ -27,23 +33,23 @@ function ShortfallChart({ series }: { series: ProjectionSeriesPoint[] }) {
   const width = Math.max(320, series.length * 70);
   const barWidth = (width - barGap * (series.length + 1)) / series.length;
 
-  const values = series.map((p) => p.projectedTrulyAvailable);
+  const values = series.map((p) => p.projectedSpendableBalance);
   const maxVal = Math.max(...values, 0);
   const minVal = Math.min(...values, 0);
   const range = maxVal - minVal || 1;
   const yFor = (v: number) => paddingTop + plotHeight - ((v - minVal) / range) * plotHeight;
   const yZero = yFor(0);
 
-  const shortfallIndex = series.findIndex((p) => p.projectedTrulyAvailable < 0);
+  const shortfallIndex = series.findIndex((p) => p.projectedSpendableBalance < 0);
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height, display: 'block' }}>
       <line x1={0} y1={yZero} x2={width} y2={yZero} stroke="var(--color-border)" strokeWidth={1} />
       {series.map((p, i) => {
         const x = barGap + i * (barWidth + barGap);
-        const yTop = Math.min(yFor(p.projectedTrulyAvailable), yZero);
-        const barHeight = Math.max(2, Math.abs(yFor(p.projectedTrulyAvailable) - yZero));
-        const negative = p.projectedTrulyAvailable < 0;
+        const yTop = Math.min(yFor(p.projectedSpendableBalance), yZero);
+        const barHeight = Math.max(2, Math.abs(yFor(p.projectedSpendableBalance) - yZero));
+        const negative = p.projectedSpendableBalance < 0;
         const isCallout = i === shortfallIndex || i === series.length - 1;
         return (
           <g key={p.asOf}>
@@ -64,7 +70,7 @@ function ShortfallChart({ series }: { series: ProjectionSeriesPoint[] }) {
                 fontWeight={600}
                 fill={negative ? 'var(--color-accent-red)' : 'var(--color-text)'}
               >
-                {formatCurrency(p.projectedTrulyAvailable)}
+                {formatCurrency(p.projectedSpendableBalance)}
               </text>
             )}
             <text x={x + barWidth / 2} y={height - 6} textAnchor="middle" fontSize={10} fill="var(--color-accent-blue)">
@@ -85,6 +91,8 @@ export default function Projections() {
   const [horizonMonths, setHorizonMonths] = useState(6);
   const [loading, setLoading] = useState(true);
   const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
+  const [burnMode, setBurnMode] = useState<'historical' | 'custom'>('historical');
+  const [customBurnEstimate, setCustomBurnEstimate] = useState('');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -104,9 +112,9 @@ export default function Projections() {
   }, []);
 
   useEffect(() => {
-    loadSeries(horizonMonths, excludedIds);
+    loadSeries(horizonMonths, excludedIds, burnMode, customBurnEstimate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [horizonMonths, projections, excludedIds]);
+  }, [horizonMonths, projections, excludedIds, burnMode, customBurnEstimate]);
 
   async function load() {
     setLoading(true);
@@ -126,8 +134,20 @@ export default function Projections() {
     });
   }
 
-  async function loadSeries(months: number, excluded: Set<string>) {
-    const result = await window.electronAPI.projections.getSeries(months, [...excluded]);
+  async function loadSeries(
+    months: number,
+    excluded: Set<string>,
+    mode: 'historical' | 'custom',
+    customEstimate: string
+  ) {
+    const options: ProjectionScenarioOptions = {};
+    if (mode === 'custom') {
+      const parsed = parseFloat(customEstimate);
+      if (!isNaN(parsed) && parsed >= 0) {
+        options.burnRateOverride = -Math.abs(parsed);
+      }
+    }
+    const result = await window.electronAPI.projections.getSeries(months, [...excluded], options);
     setSeries(result);
   }
 
@@ -195,7 +215,7 @@ export default function Projections() {
         frequency,
         startDate,
         lastDayOfMonth: frequency === 'monthly' && lastDayOfMonth,
-        endDate: endDate || null,
+        endDate: frequency === 'once' ? null : endDate || null,
         accountId: accountId || null,
         note: note.trim() || null,
       };
@@ -220,7 +240,7 @@ export default function Projections() {
   }
 
   const lastPoint = series.length > 0 ? series[series.length - 1] : null;
-  const shortfallPoint = series.find((p) => p.projectedTrulyAvailable < 0) ?? null;
+  const shortfallPoint = series.find((p) => p.projectedSpendableBalance < 0) ?? null;
 
   return (
     <div>
@@ -240,11 +260,17 @@ export default function Projections() {
       <div className="stat-row" style={{ marginTop: 12, marginBottom: 20 }}>
         <div className="card">
           <div className="stat-label">Today's Spendable Balance</div>
-          <div className="stat-value">{todaySpendable != null ? formatCurrency(todaySpendable) : '—'}</div>
+          <div className={`stat-value ${todaySpendable != null && todaySpendable < 0 ? 'amount-negative' : ''}`}>
+            {todaySpendable != null ? formatCurrency(todaySpendable) : '—'}
+          </div>
         </div>
         <div className="card">
           <div className="stat-label">Projected Spendable ({horizonMonths}mo)</div>
-          <div className="stat-value">{lastPoint ? formatCurrency(lastPoint.projectedSpendableBalance) : '—'}</div>
+          <div
+            className={`stat-value ${lastPoint && lastPoint.projectedSpendableBalance < 0 ? 'amount-negative' : ''}`}
+          >
+            {lastPoint ? formatCurrency(lastPoint.projectedSpendableBalance) : '—'}
+          </div>
         </div>
         <div className="card">
           <div className="stat-label">Projected Truly Available ({horizonMonths}mo)</div>
@@ -279,26 +305,53 @@ export default function Projections() {
               <ShortfallChart series={series} />
               {shortfallPoint ? (
                 <p className="amount-negative" style={{ fontSize: 13, fontWeight: 600, margin: '4px 0 0' }}>
-                  ⚠ Projected to run short around {shortfallPoint.monthLabel} ({formatCurrency(shortfallPoint.projectedTrulyAvailable)})
+                  ⚠ Projected to run short around {shortfallPoint.monthLabel} ({formatCurrency(shortfallPoint.projectedSpendableBalance)})
                 </p>
               ) : (
                 <p className="amount-positive" style={{ fontSize: 13, fontWeight: 600, margin: '4px 0 0' }}>
                   ✓ No shortfall projected in the next {horizonMonths} months
                 </p>
               )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginTop: 8, fontSize: 12 }}>
+                <span className="text-muted">Monthly spending estimate:</span>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input
+                    type="radio"
+                    name="burnMode"
+                    checked={burnMode === 'historical'}
+                    onChange={() => setBurnMode('historical')}
+                  />
+                  {BURN_LOOKBACK_MONTHS}-month average (default)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input
+                    type="radio"
+                    name="burnMode"
+                    checked={burnMode === 'custom'}
+                    onChange={() => setBurnMode('custom')}
+                  />
+                  Custom estimate
+                </label>
+                {burnMode === 'custom' && (
+                  <CurrencyInput value={customBurnEstimate} onChange={setCustomBurnEstimate} placeholder="e.g. $6,000.00" />
+                )}
+              </div>
               <p className="text-muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
-                Assumes {formatCurrency(Math.abs(series[0]?.monthlyBurnRate ?? 0))}/mo ordinary spending (trailing{' '}
-                {BURN_LOOKBACK_MONTHS}-month average, excluding accounts held back for an active Obligation) and
-                Obligations paid in full on their due date.
+                Assumes {formatCurrency(Math.abs(series[0]?.monthlyBurnRate ?? 0))}/mo ordinary spending (
+                {burnMode === 'custom'
+                  ? 'your custom estimate'
+                  : `trailing ${BURN_LOOKBACK_MONTHS}-month average, excluding accounts held back for an active Obligation`}
+                ) and Obligations paid in full on their due date.
               </p>
             </div>
             <table className="data-table" style={{ marginTop: 8 }}>
               <thead>
                 <tr>
                   <th>Month</th>
-                  <th style={{ textAlign: 'right' }}>Projected Spendable at Month End</th>
+                  <th style={{ textAlign: 'right' }}>Projected Income This Month</th>
                   <th style={{ textAlign: 'right' }}>Obligations Due This Month</th>
                   <th style={{ textAlign: 'right' }}>Still Obligated at Month End</th>
+                  <th style={{ textAlign: 'right' }}>Projected Spendable at Month End</th>
                   <th style={{ textAlign: 'right' }}>Projected Truly Available at Month End</th>
                 </tr>
               </thead>
@@ -306,14 +359,15 @@ export default function Projections() {
                 {series.map((point) => (
                   <tr key={point.asOf}>
                     <td>{point.monthLabel}</td>
+                    <td style={{ textAlign: 'right' }}>{formatCurrency(point.projectedIncomeThisMonth)}</td>
+                    <td style={{ textAlign: 'right' }}>{formatCurrency(point.obligationsDueThisMonth)}</td>
+                    <td style={{ textAlign: 'right' }}>{formatCurrency(point.obligationsStillOutstanding)}</td>
                     <td
                       style={{ textAlign: 'right' }}
                       className={point.projectedSpendableBalance < 0 ? 'amount-negative' : undefined}
                     >
                       {formatCurrency(point.projectedSpendableBalance)}
                     </td>
-                    <td style={{ textAlign: 'right' }}>{formatCurrency(point.obligationsDueThisMonth)}</td>
-                    <td style={{ textAlign: 'right' }}>{formatCurrency(point.obligationsStillOutstanding)}</td>
                     <td
                       style={{ textAlign: 'right' }}
                       className={point.projectedTrulyAvailable < 0 ? 'amount-negative' : undefined}
@@ -409,7 +463,14 @@ export default function Projections() {
               </div>
               <div className="field">
                 <label>Frequency</label>
-                <select value={frequency} onChange={(e) => setFrequency(e.target.value as ProjectionFrequency)}>
+                <select
+                  value={frequency}
+                  onChange={(e) => {
+                    const next = e.target.value as ProjectionFrequency;
+                    setFrequency(next);
+                    if (next === 'once') setEndDate('');
+                  }}
+                >
                   {Object.entries(FREQUENCY_LABELS).map(([value, text]) => (
                     <option key={value} value={value}>
                       {text}
@@ -441,8 +502,19 @@ export default function Projections() {
                 )}
               </div>
               <div className="field">
-                <label>End Date (optional)</label>
-                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                {frequency === 'once' ? (
+                  <>
+                    <label>End Date</label>
+                    <p className="text-muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
+                      Not applicable — a one-time projection only occurs on its Start Date.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <label>End Date (optional)</label>
+                    <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                  </>
+                )}
               </div>
             </div>
 
