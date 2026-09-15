@@ -134,7 +134,9 @@ export default function Accounts() {
   return (
     <div>
       <div className="page-header">
-        <h1>Accounts</h1>
+        <h1>
+          Accounts <span className="text-muted" style={{ fontSize: 15, fontWeight: 400 }}>({accounts.length})</span>
+        </h1>
       </div>
 
       <div className="tab-bar">
