@@ -145,6 +145,10 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
       note TEXT,
       account_id TEXT,
       auto_allocate INTEGER NOT NULL DEFAULT 0,
+      target_date TEXT,
+      recurrence_unit TEXT,
+      recurrence_interval INTEGER,
+      recurrence_last_day_of_month INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE SET NULL
@@ -164,13 +168,39 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
     // already exists
   }
 
+  // Migration: obligation-level target_date/recurrence were added after heloc_obligations
+  // already shipped -- add the columns to databases created before this change. On a
+  // genuinely ancient database that still has the pre-line-items target_date column (see the
+  // ancient-legacy migration just below), this ADD COLUMN fails and is a no-op, which is
+  // exactly what's wanted: that older column already holds the one date this migration would
+  // otherwise be backfilling, so it's left in place and reused rather than dropped and redone.
+  try {
+    db.run(`ALTER TABLE heloc_obligations ADD COLUMN target_date TEXT`);
+  } catch (e) {
+    // already exists
+  }
+  try {
+    db.run(`ALTER TABLE heloc_obligations ADD COLUMN recurrence_unit TEXT`);
+  } catch (e) {
+    // already exists
+  }
+  try {
+    db.run(`ALTER TABLE heloc_obligations ADD COLUMN recurrence_interval INTEGER`);
+  } catch (e) {
+    // already exists
+  }
+  try {
+    db.run(`ALTER TABLE heloc_obligations ADD COLUMN recurrence_last_day_of_month INTEGER NOT NULL DEFAULT 0`);
+  } catch (e) {
+    // already exists
+  }
+
   db.run(`
     CREATE TABLE IF NOT EXISTS obligation_line_items (
       id TEXT PRIMARY KEY,
       obligation_id TEXT NOT NULL,
       label TEXT,
       amount REAL NOT NULL,
-      target_date TEXT,
       priority INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -181,33 +211,82 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
   // Migration: an obligation's single amount/target_date became one-or-more line items (so
   // it can hold several distinct promo balances, e.g. same-day purchases on a store card
   // that each carry their own payoff date). Backfill one line item per pre-existing
-  // obligation from its old columns, then drop those now-unused columns.
+  // obligation from its old amount column, then drop it -- target_date is deliberately left
+  // untouched here: it's the very same column the ADD COLUMN above tried (and, on a database
+  // this old, failed) to add, so it already holds exactly the one date each obligation needs
+  // going forward and doesn't need migrating at all.
   try {
-    const legacy = db.exec(`SELECT id, amount, target_date, created_at, updated_at FROM heloc_obligations`);
+    const legacy = db.exec(`SELECT id, amount, created_at, updated_at FROM heloc_obligations`);
     if (legacy.length > 0) {
       const existing = db.exec(`SELECT DISTINCT obligation_id FROM obligation_line_items`);
       const alreadyMigrated = new Set(existing.length > 0 ? existing[0].values.map((row) => row[0]) : []);
-      for (const [id, amount, targetDate, createdAt, updatedAt] of legacy[0].values) {
+      for (const [id, amount, createdAt, updatedAt] of legacy[0].values) {
         if (alreadyMigrated.has(id)) continue;
         db.run(
-          `INSERT INTO obligation_line_items (id, obligation_id, amount, target_date, priority, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 0, ?, ?)`,
-          [uuidv4(), id, amount, targetDate, createdAt, updatedAt]
+          `INSERT INTO obligation_line_items (id, obligation_id, amount, priority, created_at, updated_at)
+           VALUES (?, ?, ?, 0, ?, ?)`,
+          [uuidv4(), id, amount, createdAt, updatedAt]
         );
       }
     }
   } catch (e) {
-    // heloc_obligations has no amount/target_date columns -- already migrated or a fresh database
+    // heloc_obligations has no amount column -- already migrated or a fresh database
   }
   try {
     db.run(`ALTER TABLE heloc_obligations DROP COLUMN amount`);
   } catch (e) {
     // already dropped or never existed
   }
+
+  // Migration: a target date used to live on each line item (so a single obligation could
+  // carry several differently-dated amounts) -- it's now one date on the obligation itself,
+  // since a single obligation only ever has one due date and a different date means a
+  // different obligation. Backfill each obligation's target_date from the soonest date any of
+  // its line items had (matching the old soonest-due-first sort this app already used), then
+  // drop the now-unused per-item column.
   try {
-    db.run(`ALTER TABLE heloc_obligations DROP COLUMN target_date`);
+    const grouped = db.exec(`
+      SELECT obligation_id, MIN(target_date) as soonest
+      FROM obligation_line_items
+      WHERE target_date IS NOT NULL
+      GROUP BY obligation_id
+    `);
+    if (grouped.length > 0) {
+      for (const [obligationId, soonest] of grouped[0].values) {
+        db.run(`UPDATE heloc_obligations SET target_date = ? WHERE id = ? AND target_date IS NULL`, [
+          soonest,
+          obligationId,
+        ]);
+      }
+    }
   } catch (e) {
-    // already dropped or never existed
+    // obligation_line_items has no target_date column -- already migrated or a fresh database
+  }
+  // target_date carries an index (idx_obligation_line_items_target_date, dropped further
+  // below), so a plain ALTER TABLE DROP COLUMN refuses it on this SQLite build -- same
+  // situation as accounts.raw_name. Rebuild the table instead, guarded so it only runs once.
+  const lineItemColumns = db.exec(`PRAGMA table_info(obligation_line_items)`);
+  const lineItemsHaveTargetDate =
+    lineItemColumns.length > 0 && lineItemColumns[0].values.some((row) => row[1] === 'target_date');
+  if (lineItemsHaveTargetDate) {
+    db.run('PRAGMA foreign_keys = OFF');
+    db.run(`
+      CREATE TABLE obligation_line_items_new (
+        id TEXT PRIMARY KEY,
+        obligation_id TEXT NOT NULL,
+        label TEXT,
+        amount REAL NOT NULL,
+        priority INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (obligation_id) REFERENCES heloc_obligations(id) ON DELETE CASCADE
+      )
+    `);
+    db.run(`INSERT INTO obligation_line_items_new (id, obligation_id, label, amount, priority, created_at, updated_at)
+            SELECT id, obligation_id, label, amount, priority, created_at, updated_at FROM obligation_line_items`);
+    db.run(`DROP TABLE obligation_line_items`);
+    db.run(`ALTER TABLE obligation_line_items_new RENAME TO obligation_line_items`);
+    db.run('PRAGMA foreign_keys = ON');
   }
 
   db.run(`
@@ -376,6 +455,9 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
   // target_date moved off the parent table, so it's been dangling on a column that no
   // longer exists.
   db.run(`DROP INDEX IF EXISTS idx_heloc_reserves_target_date`);
+  // Leftover from the line-item-dates -> single-obligation-date migration: target_date no
+  // longer lives on obligation_line_items at all.
+  db.run(`DROP INDEX IF EXISTS idx_obligation_line_items_target_date`);
 
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id)`);
@@ -385,7 +467,7 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
   db.run(`CREATE INDEX IF NOT EXISTS idx_balance_anchors_date ON balance_anchors(as_of_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_reconciliations_date ON reconciliations(as_of_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_obligation_line_items_obligation ON obligation_line_items(obligation_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_obligation_line_items_target_date ON obligation_line_items(target_date)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_heloc_obligations_target_date ON heloc_obligations(target_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_income_projections_start_date ON income_projections(start_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_recurring_bills_start_date ON recurring_bills(start_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_recurring_bills_account ON recurring_bills(account_id)`);

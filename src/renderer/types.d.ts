@@ -91,6 +91,7 @@ declare global {
         create: (input: CreateObligationInput) => Promise<Obligation>;
         update: (id: string, input: UpdateObligationInput) => Promise<Obligation>;
         delete: (id: string) => Promise<{ success: boolean }>;
+        clone: (id: string, newTargetDate: string | null) => Promise<Obligation>;
       };
       obligationLineItems: {
         create: (obligationId: string, input: CreateObligationLineItemInput) => Promise<Obligation>;
