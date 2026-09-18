@@ -66,3 +66,11 @@ export interface RecurringBillMatchCandidate {
   transactionAmount: number;
   candidateBillIds: string[];
 }
+
+// A bill's current resolved amount, independent of any specific month's occurrence list --
+// used for display (e.g. the Recurring Bills table) so a bill whose next occurrence falls in a
+// future month still shows its real averaged amount instead of a false "no history" message.
+export interface RecurringBillAmountInfo {
+  resolvedAmount: number;
+  hasConfirmedHistory: boolean;
+}

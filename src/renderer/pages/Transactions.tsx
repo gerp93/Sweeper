@@ -22,7 +22,27 @@ import {
   shiftMonthKey,
   firstDayOfMonth,
   lastDayOfMonth,
+  addDaysIso,
+  daysBetween,
 } from '../utils/format';
+
+// How far past today's start of the rolling window (for the top "due soon / past due" banner
+// and for the ledger row urgency labels) reaches back for overdue items and forward for
+// upcoming ones. Independent of whichever month the ledger happens to be showing.
+const OVERDUE_LOOKBACK_DAYS = 14;
+const UPCOMING_LOOKAHEAD_DAYS = 7;
+// A bill due within this many days (but not today/tomorrow, which get their own wording) reads
+// as "due soon" instead of the generic "expected".
+const DUE_SOON_DAYS = 5;
+
+function dueStatusText(expectedDate: string, overdue: boolean): string {
+  if (overdue) return `past due — expected ${formatDate(expectedDate)}`;
+  const days = daysBetween(todayIso(), expectedDate);
+  if (days <= 0) return 'due today';
+  if (days === 1) return 'due tomorrow';
+  if (days <= DUE_SOON_DAYS) return 'due soon';
+  return 'expected';
+}
 
 type ViewMode = 'month' | 'all';
 type SortKey = 'date' | 'description' | 'account' | 'amount';
@@ -83,6 +103,9 @@ export default function Transactions() {
   const [billOccurrences, setBillOccurrences] = useState<RecurringBillOccurrence[]>([]);
   const [incomeProjections, setIncomeProjections] = useState<IncomeProjection[]>([]);
   const [incomeOccurrences, setIncomeOccurrences] = useState<IncomeProjectionOccurrence[]>([]);
+  // Independent of whichever month the ledger below is showing -- always "what's due relative
+  // to real today", so it stays correct even while browsing a different month.
+  const [urgentBillOccurrences, setUrgentBillOccurrences] = useState<RecurringBillOccurrence[]>([]);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [prefill, setPrefill] = useState<PendingPrefill | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -120,6 +143,10 @@ export default function Transactions() {
       setIncomeOccurrences([]);
     }
   }, [currentMonth, recurringBills, incomeProjections]);
+
+  useEffect(() => {
+    loadUrgentBillOccurrences();
+  }, [recurringBills]);
 
   useEffect(() => {
     setPage(1);
@@ -201,6 +228,20 @@ export default function Transactions() {
       lastDayOfMonth(month)
     );
     setIncomeOccurrences(occurrences);
+  }
+
+  // A rolling window anchored on real today, not on whichever month the ledger below happens to
+  // be showing -- so "what's due soon" stays correct even while browsing a different month.
+  async function loadUrgentBillOccurrences() {
+    const today = todayIso();
+    const windowStart = addDaysIso(today, -OVERDUE_LOOKBACK_DAYS);
+    const windowEnd = addDaysIso(today, UPCOMING_LOOKAHEAD_DAYS);
+    const occurrences = await window.electronAPI.recurringBills.getMonthlyOccurrences(windowStart, windowEnd);
+    setUrgentBillOccurrences(
+      occurrences.filter(
+        (o) => o.status !== 'reconciled' && (o.status === 'overdue' || daysBetween(today, o.expectedDate) <= 1)
+      )
+    );
   }
 
   async function handleSave(input: CreateTransactionInput) {
@@ -357,6 +398,17 @@ export default function Transactions() {
 
   const netCashFlow = bom && eom ? eom.balance - bom.balance : monthTransactions.reduce((s, t) => s + t.amount, 0);
 
+  // For the current month or any future month, blend the real net cash flow above with what's
+  // still only pencilled in (unreconciled bill occurrences + income projections) so the user can
+  // see where the month is headed, not just what's posted so far. null for past months, where
+  // there's nothing left to project -- netCashFlow alone is already the complete picture.
+  const isCurrentOrFutureMonth = currentMonth !== null && currentMonth >= monthKey(todayIso());
+  const projectedNetCashFlow = isCurrentOrFutureMonth
+    ? netCashFlow +
+      virtualBillOccurrences.reduce((s, o) => s + o.expectedAmount, 0) +
+      incomeOccurrences.reduce((s, o) => s + o.expectedAmount, 0)
+    : null;
+
   function goToMonth(delta: number) {
     if (!currentMonth) return;
     setCurrentMonth(shiftMonthKey(currentMonth, delta));
@@ -454,6 +506,36 @@ export default function Transactions() {
               </div>
             )}
           </div>
+
+          {urgentBillOccurrences.length > 0 && (
+            <div
+              className="card"
+              style={{
+                marginTop: 20,
+                borderColor: 'var(--color-accent-red)',
+                borderWidth: 2,
+                background: 'rgba(220, 38, 38, 0.12)',
+              }}
+            >
+              <h2 style={{ fontSize: 15, marginTop: 0, color: 'var(--color-accent-red)' }}>
+                ⚠ {urgentBillOccurrences.length} bill{urgentBillOccurrences.length === 1 ? '' : 's'} due today, tomorrow, or past due
+              </h2>
+              <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13 }}>
+                {urgentBillOccurrences
+                  .slice()
+                  .sort((a, b) => (a.expectedDate < b.expectedDate ? -1 : 1))
+                  .map((o) => (
+                    <li key={`${o.billId}-${o.expectedDate}`} style={{ marginBottom: 4 }}>
+                      <strong>{o.billLabel}</strong> — {formatCurrency(o.expectedAmount)} (
+                      {dueStatusText(o.expectedDate, o.status === 'overdue')}) —{' '}
+                      <button className="btn-link" onClick={() => addRealTransactionForBill(o)}>
+                        + Add real transaction
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
 
           <div className="stat-row" style={{ marginTop: 20, marginBottom: 20 }}>
             <div className="card">
@@ -601,6 +683,14 @@ export default function Transactions() {
                     Net cash flow: {formatCurrency(netCashFlow)}
                   </div>
                 )}
+                {!balancesLoading && projectedNetCashFlow !== null && (
+                  <div
+                    className={projectedNetCashFlow >= 0 ? 'amount-positive' : 'amount-negative'}
+                    style={{ fontSize: 12, opacity: 0.8 }}
+                  >
+                    Projected: {formatCurrency(projectedNetCashFlow)}
+                  </div>
+                )}
               </div>
               <button className="btn" onClick={() => goToMonth(1)}>
                 Next ›
@@ -663,10 +753,14 @@ export default function Transactions() {
                               {accountName(recurringBills.find((b) => b.id === occurrence.billId)?.accountId ?? null)}
                             </td>
                             <td>
-                              {occurrence.billLabel} ({overdue ? `overdue — expected ${formatDate(occurrence.expectedDate)}` : 'expected'})
+                              {occurrence.billLabel} ({dueStatusText(occurrence.expectedDate, overdue)})
                             </td>
-                            <td style={{ textAlign: 'right' }}>{formatCurrency(occurrence.expectedAmount)}</td>
-                            <td style={{ textAlign: 'right' }}>{formatCurrency(balance)}</td>
+                            <td style={{ textAlign: 'right' }} className="amount-negative">
+                              {formatCurrency(occurrence.expectedAmount)}
+                            </td>
+                            <td style={{ textAlign: 'right' }} className={balance < 0 ? 'amount-negative' : undefined}>
+                              {formatCurrency(balance)}
+                            </td>
                             <td>—</td>
                             <td>
                               <div className="ledger-actions">
@@ -692,9 +786,15 @@ export default function Transactions() {
                                 incomeProjections.find((p) => p.id === occurrence.projectionId)?.accountId ?? null
                               )}
                             </td>
-                            <td>{occurrence.label} (expected)</td>
-                            <td style={{ textAlign: 'right' }}>{formatCurrency(occurrence.expectedAmount)}</td>
-                            <td style={{ textAlign: 'right' }}>{formatCurrency(balance)}</td>
+                            <td>
+                              {occurrence.label} ({dueStatusText(occurrence.expectedDate, false)})
+                            </td>
+                            <td style={{ textAlign: 'right' }} className="amount-positive-bright">
+                              {formatCurrency(occurrence.expectedAmount)}
+                            </td>
+                            <td style={{ textAlign: 'right' }} className={balance < 0 ? 'amount-negative' : 'amount-positive-bright'}>
+                              {formatCurrency(balance)}
+                            </td>
                             <td>—</td>
                             <td>
                               <div className="ledger-actions">
@@ -761,6 +861,14 @@ export default function Transactions() {
               {!balancesLoading && (
                 <div className={netCashFlow >= 0 ? 'amount-positive' : 'amount-negative'}>
                   Net cash flow: {formatCurrency(netCashFlow)}
+                </div>
+              )}
+              {!balancesLoading && projectedNetCashFlow !== null && (
+                <div
+                  className={projectedNetCashFlow >= 0 ? 'amount-positive' : 'amount-negative'}
+                  style={{ fontSize: 13, opacity: 0.8 }}
+                >
+                  Projected (incl. pencilled-in bills/income): {formatCurrency(projectedNetCashFlow)}
                 </div>
               )}
             </div>

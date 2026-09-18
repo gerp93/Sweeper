@@ -28,6 +28,7 @@ import {
   UpdateRecurringBillInput,
   RecurringBillOccurrence,
   RecurringBillMatchCandidate,
+  RecurringBillAmountInfo,
 } from '../shared/types/recurringBill';
 
 declare global {
@@ -129,6 +130,7 @@ declare global {
         getMonthlyOccurrences: (monthStart: string, monthEnd: string) => Promise<RecurringBillOccurrence[]>;
         getExpectedTotal: (windowStart: string, windowEnd: string) => Promise<number>;
         findCandidateMatches: (transactionIds: string[]) => Promise<RecurringBillMatchCandidate[]>;
+        getAmountInfo: () => Promise<Record<string, RecurringBillAmountInfo>>;
       };
       dbLocation: {
         get: () => Promise<{ path: string; isDefault: boolean; defaultPath: string; sizeBytes: number | null }>;

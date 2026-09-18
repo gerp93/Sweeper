@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { RecurringBill, RecurringBillAmountMode, RecurringBillOccurrence } from '../../shared/types/recurringBill';
+import { RecurringBill, RecurringBillAmountMode, RecurringBillAmountInfo } from '../../shared/types/recurringBill';
 import { ProjectionFrequency } from '../../shared/types/projection';
 import { Account } from '../../shared/types/account';
 import CurrencyInput from '../components/CurrencyInput';
 import { syncAutoDetectedBills, resetAutoDetection } from '../utils/autoDetectBills';
-import { formatCurrency, formatDate, todayIso, monthKey, firstDayOfMonth, lastDayOfMonth } from '../utils/format';
+import { formatCurrency, formatDate, todayIso } from '../utils/format';
 
 const FREQUENCY_LABELS: Record<ProjectionFrequency, string> = {
   once: 'One-time',
@@ -16,7 +16,7 @@ const FREQUENCY_LABELS: Record<ProjectionFrequency, string> = {
 export default function RecurringBills() {
   const [bills, setBills] = useState<RecurringBill[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [thisMonthOccurrences, setThisMonthOccurrences] = useState<RecurringBillOccurrence[]>([]);
+  const [amountInfo, setAmountInfo] = useState<Record<string, RecurringBillAmountInfo>>({});
   const [loading, setLoading] = useState(true);
   const [justAutoAdded, setJustAutoAdded] = useState<RecurringBill[]>([]);
   const [detecting, setDetecting] = useState(false);
@@ -42,7 +42,6 @@ export default function RecurringBills() {
 
   async function load() {
     setLoading(true);
-    const thisMonth = monthKey(todayIso());
     let [billList, accts, txs] = await Promise.all([
       window.electronAPI.recurringBills.getAll(),
       window.electronAPI.accounts.getAll(),
@@ -57,14 +56,11 @@ export default function RecurringBills() {
       billList = await window.electronAPI.recurringBills.getAll();
     }
 
-    const occurrences = await window.electronAPI.recurringBills.getMonthlyOccurrences(
-      firstDayOfMonth(thisMonth),
-      lastDayOfMonth(thisMonth)
-    );
+    const info = await window.electronAPI.recurringBills.getAmountInfo();
 
     setBills(billList);
     setAccounts(accts);
-    setThisMonthOccurrences(occurrences);
+    setAmountInfo(info);
     setLoading(false);
   }
 
@@ -83,14 +79,13 @@ export default function RecurringBills() {
     return accounts.find((a) => a.id === id)?.friendlyName ?? null;
   }
 
-  // Best-effort resolved amount for display: the current month's expected occurrence for this
-  // bill, if there is one. An auto-average bill with no occurrence this month (or no confirmed
-  // history yet) shows a muted placeholder instead of a misleading $0.00.
+  // An auto-average bill with no confirmed linked history yet shows a muted placeholder
+  // instead of a misleading $0.00.
   function resolvedAmountDisplay(bill: RecurringBill): string {
     if (bill.amountMode === 'fixed') return formatCurrency(bill.fixedAmount ?? 0);
-    const occ = thisMonthOccurrences.find((o) => o.billId === bill.id);
-    if (!occ || occ.expectedAmount === 0) return 'no confirmed history yet';
-    return `~${formatCurrency(occ.expectedAmount)} (avg)`;
+    const info = amountInfo[bill.id];
+    if (!info || !info.hasConfirmedHistory) return 'no confirmed history yet';
+    return `~${formatCurrency(info.resolvedAmount)} (avg)`;
   }
 
   function resetForm() {

@@ -121,6 +121,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('recurringBills:getExpectedTotal', windowStart, windowEnd),
     findCandidateMatches: (transactionIds: string[]) =>
       ipcRenderer.invoke('recurringBills:findCandidateMatches', transactionIds),
+    getAmountInfo: () => ipcRenderer.invoke('recurringBills:getAmountInfo'),
   },
 
   dbLocation: {

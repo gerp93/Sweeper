@@ -207,6 +207,14 @@ table {
   font-weight: 600;
 }
 
+/* Lightened accent-green, for projected income amounts -- the plain accent-green
+   reads as muted/gray against a dark background, so this brightens it toward white
+   while still tracking whatever green each theme defines. */
+.amount-positive-bright {
+  color: color-mix(in srgb, var(--color-accent-green) 70%, white 30%);
+  font-weight: 600;
+}
+
 .pill {
   display: inline-block;
   font-size: 12px;
