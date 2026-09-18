@@ -83,12 +83,12 @@ export default function RecurringBills() {
     return accounts.find((a) => a.id === id)?.friendlyName ?? null;
   }
 
-  // An auto-average bill with no confirmed linked history yet shows a muted placeholder
-  // instead of a misleading $0.00.
+  // An auto-average bill with no expense history on its linked account yet shows a muted
+  // placeholder instead of a misleading $0.00.
   function resolvedAmountDisplay(bill: RecurringBill): string {
     if (bill.amountMode === 'fixed') return formatCurrency(bill.fixedAmount ?? 0);
     const info = amountInfo[bill.id];
-    if (!info || !info.hasConfirmedHistory) return 'no confirmed history yet';
+    if (!info || !info.hasConfirmedHistory) return 'no history yet';
     return `~${formatCurrency(info.resolvedAmount)} (avg)`;
   }
 
@@ -176,14 +176,13 @@ export default function RecurringBills() {
 
   return (
     <div>
-      <div className="page-header">
-        <h1>Recurring Bills</h1>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button className="btn btn-primary" onClick={startAdd}>
           + New Recurring Bill
         </button>
       </div>
 
-      <p className="text-muted" style={{ marginTop: -8, fontSize: 13, maxWidth: 720 }}>
+      <p className="text-muted" style={{ marginTop: 8, fontSize: 13, maxWidth: 720 }}>
         Bills you expect to pay — utilities, subscriptions, loan payments — show up here two ways: added by hand
         below, or auto-detected from a consistent, still-active pattern in your real history (last ~60 days). Either
         way, they surface as a forward-looking reminder in your ledger and, once confirmed against a real import, an
@@ -236,12 +235,11 @@ export default function RecurringBills() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Label</th>
+                <th>Linked Account</th>
                 <th style={{ textAlign: 'right' }}>Amount</th>
                 <th>Frequency</th>
                 <th>Start</th>
                 <th>End</th>
-                <th>Linked Account</th>
                 <th>Active</th>
                 <th></th>
               </tr>
@@ -249,7 +247,10 @@ export default function RecurringBills() {
             <tbody>
               {bills.map((b) => (
                 <tr key={b.id}>
-                  <td>{b.label}</td>
+                  {/* No linked account (rare) falls back to the label so the row still has a
+                      name -- but when an account is linked, that's the only identifier shown,
+                      never both. */}
+                  <td>{accountName(b.accountId) ?? b.label}</td>
                   <td style={{ textAlign: 'right' }} className={b.amountMode === 'auto-average' ? 'text-muted' : undefined}>
                     {resolvedAmountDisplay(b)}
                   </td>
@@ -259,7 +260,6 @@ export default function RecurringBills() {
                   </td>
                   <td>{formatDate(b.startDate)}</td>
                   <td>{b.endDate ? formatDate(b.endDate) : '—'}</td>
-                  <td>{accountName(b.accountId) ?? '—'}</td>
                   <td>{b.active ? 'Yes' : 'Paused'}</td>
                   <td>
                     <div className="ledger-actions">
@@ -307,7 +307,7 @@ export default function RecurringBills() {
                     checked={amountMode === 'auto-average'}
                     onChange={() => setAmountMode('auto-average')}
                   />
-                  Auto-average my confirmed history
+                  Auto-average the linked account's history
                 </label>
               </div>
               {amountMode === 'fixed' ? (
@@ -315,9 +315,9 @@ export default function RecurringBills() {
               ) : (
                 <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>
                   {/* Keep "6" in sync with AUTO_AVERAGE_LOOKBACK in recurringBillService.ts. */}
-                  Averages the last 6 real transactions you've confirmed against this bill (or fewer, until 6 have
-                  been confirmed). Shows "no confirmed history yet" until you've confirmed at least one — never a
-                  guessed number.
+                  A live average of the last 6 real expense transactions on the linked account below (or fewer,
+                  until it has 6). Shows "no history yet" until the account has at least one — never a guessed
+                  number, and requires a linked account.
                 </p>
               )}
             </div>

@@ -11,7 +11,6 @@ const NAV_ITEMS = [
   { to: '/reconcile', label: 'Reconcile' },
   { to: '/obligations', label: 'Obligations' },
   { to: '/projections', label: 'Projections' },
-  { to: '/recurring-bills', label: 'Recurring Bills' },
   { to: '/accounts', label: 'Accounts' },
   { to: '/settings', label: 'Settings' },
 ];

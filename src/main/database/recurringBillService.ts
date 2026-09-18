@@ -187,17 +187,21 @@ export class RecurringBillService {
     saveDatabase(this.db);
   }
 
-  // Fixed bills just report their set amount. Auto-average bills average the most recent
-  // confirmed-linked transactions only -- never fuzzy-matched pre-link history, since that
-  // would reintroduce the automatic matching the user explicitly ruled out, just relocated
-  // into the average instead of the ledger. Returns 0 with no linked history yet.
+  // Fixed bills just report their set amount. Auto-average bills average the linked account's
+  // own most recent real expense transactions -- a live read, not something that requires a
+  // separate manual confirm/link step first. This app's data model is one account per recurring
+  // payee, so the account itself is already the reliable signal (the same narrowing
+  // findCandidateMatches uses) -- there's no need to additionally gate the average on each
+  // transaction having been explicitly linked via recurring_bill_id first. Returns 0 with no
+  // linked account or no expense history on it yet.
   private resolvedAmount(bill: RecurringBill): number {
     if (bill.amountMode === 'fixed') return bill.fixedAmount ?? 0;
+    if (!bill.accountId) return 0;
 
     const stmt = this.db.prepare(
-      `SELECT amount FROM transactions WHERE recurring_bill_id = ? ORDER BY date DESC LIMIT ?`
+      `SELECT amount FROM transactions WHERE account_id = ? AND amount < 0 ORDER BY date DESC LIMIT ?`
     );
-    stmt.bind([bill.id, AUTO_AVERAGE_LOOKBACK]);
+    stmt.bind([bill.accountId, AUTO_AVERAGE_LOOKBACK]);
     const amounts: number[] = [];
     while (stmt.step()) amounts.push(Number(stmt.get()[0]));
     stmt.free();
@@ -206,11 +210,13 @@ export class RecurringBillService {
     return amounts.reduce((sum, a) => sum + a, 0) / amounts.length;
   }
 
-  // Whether an auto-average bill has any confirmed history yet -- lets the UI show "no
-  // confirmed history yet" instead of a misleading $0.00.
+  // Whether an auto-average bill's linked account has any real expense history yet -- lets the
+  // UI show "no history yet" instead of a misleading $0.00.
   hasConfirmedHistory(billId: string): boolean {
-    const stmt = this.db.prepare(`SELECT 1 FROM transactions WHERE recurring_bill_id = ? LIMIT 1`);
-    stmt.bind([billId]);
+    const bill = this.getBillById(billId);
+    if (!bill?.accountId) return false;
+    const stmt = this.db.prepare(`SELECT 1 FROM transactions WHERE account_id = ? AND amount < 0 LIMIT 1`);
+    stmt.bind([bill.accountId]);
     const has = stmt.step();
     stmt.free();
     return has;

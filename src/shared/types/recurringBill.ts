@@ -7,7 +7,8 @@ export interface RecurringBill {
   label: string;
   amountMode: RecurringBillAmountMode;
   // Negative, like Transaction.amount. Required when amountMode === 'fixed'; null when
-  // 'auto-average' (the resolved amount is computed on read from linked transaction history).
+  // 'auto-average' (the resolved amount is computed live on read from the linked account's real
+  // transaction history).
   fixedAmount: number | null;
   frequency: ProjectionFrequency;
   startDate: string;
