@@ -85,6 +85,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     create: (input: CreateObligationInput) => ipcRenderer.invoke('obligations:create', input),
     update: (id: string, input: UpdateObligationInput) => ipcRenderer.invoke('obligations:update', id, input),
     delete: (id: string) => ipcRenderer.invoke('obligations:delete', id),
+    clone: (id: string, newTargetDate: string | null) => ipcRenderer.invoke('obligations:clone', id, newTargetDate),
   },
 
   obligationLineItems: {

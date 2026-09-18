@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Obligation, ObligationLineItem } from '../../shared/types/obligation';
+import { Obligation, ObligationLineItem, ObligationRecurrence, ObligationRecurrenceUnit } from '../../shared/types/obligation';
 import { Account } from '../../shared/types/account';
 import { SpendableBalance } from '../../shared/types/balanceAnchor';
 import CurrencyInput from '../components/CurrencyInput';
@@ -23,6 +23,51 @@ function Countdown({ targetDate, remaining, today }: { targetDate: string | null
   return <span className={days < 0 ? 'amount-negative' : 'text-muted'}>{countdownText(days)}</span>;
 }
 
+// Client-side approximation used only to prefill the "Clone to new date" dialog -- whatever
+// it suggests is fully editable before saving, so exact calendar precision doesn't matter here
+// the way it does in the main process's authoritative computeNextOccurrenceDate.
+function suggestNextDate(fromDate: string, recurrence: ObligationRecurrence): string {
+  const [y, m, d] = fromDate.split('-').map(Number);
+  let next: Date;
+  switch (recurrence.unit) {
+    case 'day':
+      next = new Date(Date.UTC(y, m - 1, d + recurrence.interval));
+      break;
+    case 'week':
+      next = new Date(Date.UTC(y, m - 1, d + recurrence.interval * 7));
+      break;
+    case 'year':
+      next = new Date(Date.UTC(y + recurrence.interval, m - 1, d));
+      break;
+    case 'month':
+    default:
+      next = new Date(Date.UTC(y, m - 1 + recurrence.interval, d));
+      break;
+  }
+  if (recurrence.unit === 'month' && recurrence.lastDayOfMonth) {
+    next = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0));
+  }
+  return next.toISOString().slice(0, 10);
+}
+
+function recurrenceLabel(recurrence: ObligationRecurrence): string {
+  const unit = recurrence.interval === 1 ? recurrence.unit : `${recurrence.unit}s`;
+  const suffix = recurrence.unit === 'month' && recurrence.lastDayOfMonth ? ' (last day of month)' : '';
+  return recurrence.interval === 1 ? `Every ${unit}${suffix}` : `Every ${recurrence.interval} ${unit}${suffix}`;
+}
+
+const RECURRENCE_UNITS: ObligationRecurrenceUnit[] = ['day', 'week', 'month', 'year'];
+const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+
+// Recurring obligations more than a year out are hidden here -- there's no value in cluttering
+// this list with something that far ahead, and it reappears once it's within a year. A one-off
+// (no recurrence) obligation is always shown regardless of how far out its date is.
+function isBeyondRecurringHorizon(o: Obligation, today: string): boolean {
+  if (!o.recurrence || !o.targetDate) return false;
+  const horizon = new Date(new Date(today).getTime() + ONE_YEAR_MS).toISOString().slice(0, 10);
+  return o.targetDate > horizon;
+}
+
 export default function Obligations() {
   const [obligations, setObligations] = useState<Obligation[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -30,16 +75,18 @@ export default function Obligations() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Obligation-level fields (label/note/account/auto-allocate). Amount and target date now
-  // live on line items -- only the "new obligation" form collects a starter one.
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [label, setLabel] = useState('');
   const [note, setNote] = useState('');
   const [accountId, setAccountId] = useState('');
   const [autoAllocate, setAutoAllocate] = useState(false);
+  const [targetDate, setTargetDate] = useState('');
   const [firstAmount, setFirstAmount] = useState('');
-  const [firstTargetDate, setFirstTargetDate] = useState('');
+  const [recurring, setRecurring] = useState(false);
+  const [recurrenceInterval, setRecurrenceInterval] = useState('1');
+  const [recurrenceUnit, setRecurrenceUnit] = useState<ObligationRecurrenceUnit>('month');
+  const [recurrenceLastDayOfMonth, setRecurrenceLastDayOfMonth] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Read-only "show me the individual amounts" toggle on the page itself -- editing only
@@ -47,14 +94,20 @@ export default function Obligations() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Add/edit line item mini-form, shown inside the Edit Obligation modal for whichever
-  // obligation is currently being edited.
+  // obligation is currently being edited. Line items are just label + amount now -- date lives
+  // on the obligation itself.
   const [liEditingId, setLiEditingId] = useState<string | null>(null);
   const [liFormOpen, setLiFormOpen] = useState(false);
   const [liLabel, setLiLabel] = useState('');
   const [liAmount, setLiAmount] = useState('');
-  const [liTargetDate, setLiTargetDate] = useState('');
   const [liSaving, setLiSaving] = useState(false);
   const [liError, setLiError] = useState<string | null>(null);
+
+  // Clone-to-new-date dialog.
+  const [cloneSourceId, setCloneSourceId] = useState<string | null>(null);
+  const [cloneDate, setCloneDate] = useState('');
+  const [cloning, setCloning] = useState(false);
+  const [cloneError, setCloneError] = useState<string | null>(null);
 
   useEffect(() => {
     load();
@@ -80,22 +133,19 @@ export default function Obligations() {
     setNote('');
     setAccountId('');
     setAutoAllocate(false);
+    setTargetDate('');
     setFirstAmount('');
-    setFirstTargetDate('');
+    setRecurring(false);
+    setRecurrenceInterval('1');
+    setRecurrenceUnit('month');
+    setRecurrenceLastDayOfMonth(false);
     setError(null);
     closeLiForm();
   }
 
   function startAdd() {
+    resetForm();
     setModalOpen(true);
-    setEditingId(null);
-    setLabel('');
-    setNote('');
-    setAccountId('');
-    setAutoAllocate(false);
-    setFirstAmount('');
-    setFirstTargetDate('');
-    setError(null);
   }
 
   function startEdit(obligation: Obligation) {
@@ -105,24 +155,47 @@ export default function Obligations() {
     setNote(obligation.note ?? '');
     setAccountId(obligation.accountId ?? '');
     setAutoAllocate(obligation.autoAllocate);
+    setTargetDate(obligation.targetDate ?? '');
+    setFirstAmount('');
+    if (obligation.recurrence) {
+      setRecurring(true);
+      setRecurrenceInterval(String(obligation.recurrence.interval));
+      setRecurrenceUnit(obligation.recurrence.unit);
+      setRecurrenceLastDayOfMonth(obligation.recurrence.lastDayOfMonth);
+    } else {
+      setRecurring(false);
+      setRecurrenceInterval('1');
+      setRecurrenceUnit('month');
+      setRecurrenceLastDayOfMonth(false);
+    }
     setError(null);
   }
 
   const parsedFirstAmount = parseFloat(firstAmount);
   const firstAmountValid = editingId != null || (firstAmount.trim() !== '' && !isNaN(parsedFirstAmount) && parsedFirstAmount > 0);
-  const canSave = label.trim() !== '' && firstAmountValid && !saving;
+  const parsedInterval = parseInt(recurrenceInterval, 10);
+  const recurrenceValid = !recurring || (!isNaN(parsedInterval) && parsedInterval > 0);
+  const canSave = label.trim() !== '' && firstAmountValid && recurrenceValid && !saving;
+
+  function buildRecurrence(): ObligationRecurrence | null {
+    if (!recurring) return null;
+    return { unit: recurrenceUnit, interval: parsedInterval, lastDayOfMonth: recurrenceUnit === 'month' && recurrenceLastDayOfMonth };
+  }
 
   async function handleSave() {
     if (!canSave) return;
     setSaving(true);
     setError(null);
     try {
+      const recurrence = buildRecurrence();
       if (editingId) {
         await window.electronAPI.obligations.update(editingId, {
           label: label.trim(),
           note: note.trim() || null,
           accountId: accountId || null,
           autoAllocate: accountId ? autoAllocate : false,
+          targetDate: targetDate || null,
+          recurrence,
         });
       } else {
         await window.electronAPI.obligations.create({
@@ -130,7 +203,9 @@ export default function Obligations() {
           note: note.trim() || null,
           accountId: accountId || null,
           autoAllocate: accountId ? autoAllocate : false,
-          lineItems: [{ amount: parsedFirstAmount, targetDate: firstTargetDate || null }],
+          targetDate: targetDate || null,
+          recurrence,
+          lineItems: [{ amount: parsedFirstAmount }],
         });
       }
       resetForm();
@@ -165,7 +240,6 @@ export default function Obligations() {
     setLiEditingId(null);
     setLiLabel('');
     setLiAmount('');
-    setLiTargetDate('');
     setLiError(null);
   }
 
@@ -174,7 +248,6 @@ export default function Obligations() {
     setLiEditingId(null);
     setLiLabel('');
     setLiAmount('');
-    setLiTargetDate('');
     setLiError(null);
   }
 
@@ -183,7 +256,6 @@ export default function Obligations() {
     setLiEditingId(item.id);
     setLiLabel(item.label ?? '');
     setLiAmount(String(item.amount));
-    setLiTargetDate(item.targetDate ?? '');
     setLiError(null);
   }
 
@@ -195,11 +267,7 @@ export default function Obligations() {
     setLiSaving(true);
     setLiError(null);
     try {
-      const input = {
-        label: liLabel.trim() || null,
-        amount: parsedLiAmount,
-        targetDate: liTargetDate || null,
-      };
+      const input = { label: liLabel.trim() || null, amount: parsedLiAmount };
       if (liEditingId) {
         await window.electronAPI.obligationLineItems.update(liEditingId, input);
       } else {
@@ -226,10 +294,43 @@ export default function Obligations() {
     await load();
   }
 
+  function openClone(o: Obligation) {
+    setCloneSourceId(o.id);
+    setCloneError(null);
+    if (o.targetDate && o.recurrence) {
+      setCloneDate(suggestNextDate(o.targetDate, o.recurrence));
+    } else {
+      setCloneDate(o.targetDate ?? '');
+    }
+  }
+
+  function closeClone() {
+    setCloneSourceId(null);
+    setCloneDate('');
+    setCloneError(null);
+  }
+
+  async function handleClone() {
+    if (!cloneSourceId) return;
+    setCloning(true);
+    setCloneError(null);
+    try {
+      await window.electronAPI.obligations.clone(cloneSourceId, cloneDate || null);
+      closeClone();
+      await load();
+    } catch (err) {
+      setCloneError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCloning(false);
+    }
+  }
+
   const today = todayIso();
+  const visibleObligations = obligations.filter((o) => !isBeyondRecurringHorizon(o, today));
   const totalObligated = obligations.reduce((sum, o) => sum + o.remaining, 0);
   const trulyAvailable = spendable ? spendable.balance - totalObligated : null;
   const editingObligation = editingId ? obligations.find((o) => o.id === editingId) ?? null : null;
+  const cloneSource = cloneSourceId ? obligations.find((o) => o.id === cloneSourceId) ?? null : null;
 
   return (
     <div>
@@ -243,9 +344,10 @@ export default function Obligations() {
       <p className="text-muted" style={{ marginTop: -8, fontSize: 13, maxWidth: 720 }}>
         Obligations are dollars inside your HELOC spendable balance that are already spoken for — held back for
         future payments, like deferred-interest balances coming due — so they don't get swept up in everyday
-        spending. An obligation can hold several target amounts (say, three same-day store-card purchases that each
-        carry their own promo payoff date) — amounts due the same date are shown combined. When a payment is
-        allocated to the obligation, it pays down whichever target is first in line, in the order you set in Edit.
+        spending. An obligation has one due date and can hold several target amounts under it (say, three same-day
+        store-card purchases sharing one promo payoff date). A different date means a different obligation — use
+        Clone to spin off the next occurrence of a recurring one. When a payment is allocated to the obligation, it
+        pays down whichever target is first in line, in the order you set in Edit.
       </p>
 
       <div className="stat-row" style={{ marginTop: 12, marginBottom: 20 }}>
@@ -269,17 +371,17 @@ export default function Obligations() {
 
       {loading ? (
         <div className="card empty-state">Loading…</div>
-      ) : obligations.length === 0 ? (
-        <div className="card empty-state">No obligations set up yet.</div>
+      ) : visibleObligations.length === 0 ? (
+        <div className="card empty-state">
+          {obligations.length === 0 ? 'No obligations set up yet.' : 'No obligations due within the next year.'}
+        </div>
       ) : (
-        obligations.map((o) => {
-          const overdue = o.dateGroups.some((g) => g.targetDate != null && g.targetDate < today && g.remaining > 0);
+        visibleObligations.map((o) => {
+          const overdue = o.targetDate != null && o.targetDate < today && o.remaining > 0;
           const fulfilled = o.remaining <= 0;
           const linkedAccountName = accountName(o.accountId);
           const expanded = expandedId === o.id;
           const hasMultipleLineItems = o.lineItems.length > 1;
-
-          const singleGroup = o.dateGroups.length === 1 ? o.dateGroups[0] : null;
 
           return (
             <div className="card" key={o.id} style={{ marginBottom: 16 }}>
@@ -297,6 +399,11 @@ export default function Obligations() {
                         Past due
                       </span>
                     )}
+                    {o.recurrence && (
+                      <span className="pill pill-included" style={{ marginLeft: 8 }}>
+                        {recurrenceLabel(o.recurrence)}
+                      </span>
+                    )}
                   </div>
                   <div className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>
                     {linkedAccountName ? `Linked to ${linkedAccountName}` : 'No linked account'}
@@ -309,6 +416,9 @@ export default function Obligations() {
                   </div>
                 </div>
                 <div className="ledger-actions">
+                  <button className="btn-link" onClick={() => openClone(o)}>
+                    Clone
+                  </button>
                   <button className="btn-link" onClick={() => startEdit(o)}>
                     Edit
                   </button>
@@ -318,54 +428,13 @@ export default function Obligations() {
                 </div>
               </div>
 
-              {singleGroup ? (
-                <div style={{ marginTop: 10, display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-                  <span
-                    style={{ fontSize: 22, fontWeight: 700 }}
-                    className={fulfilled ? 'amount-positive' : undefined}
-                  >
-                    {formatCurrency(singleGroup.remaining)}
-                  </span>
-                  {singleGroup.targetDate && (
-                    <span className="text-muted">due {formatDate(singleGroup.targetDate)}</span>
-                  )}
-                  <Countdown targetDate={singleGroup.targetDate} remaining={singleGroup.remaining} today={today} />
-                </div>
-              ) : (
-                <>
-                  <div style={{ marginTop: 10, fontWeight: 600 }}>
-                    Total: <span className={fulfilled ? 'amount-positive' : undefined}>{formatCurrency(o.remaining)}</span>
-                  </div>
-                  <table className="data-table" style={{ marginTop: 8 }}>
-                    <thead>
-                      <tr>
-                        <th>Target Date</th>
-                        <th style={{ textAlign: 'right' }}>Target</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {o.dateGroups.map((g) => {
-                        const groupOverdue = g.targetDate != null && g.targetDate < today && g.remaining > 0;
-                        return (
-                          <tr key={g.targetDate ?? '__none__'}>
-                            <td className={groupOverdue ? 'amount-negative' : undefined}>
-                              {g.targetDate ? formatDate(g.targetDate) : 'No date'}
-                              {groupOverdue ? ' (past due)' : ''}
-                            </td>
-                            <td style={{ textAlign: 'right' }} className={g.remaining <= 0 ? 'amount-positive' : undefined}>
-                              {formatCurrency(g.remaining)}
-                            </td>
-                            <td>
-                              <Countdown targetDate={g.targetDate} remaining={g.remaining} today={today} />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </>
-              )}
+              <div style={{ marginTop: 10, display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 22, fontWeight: 700 }} className={fulfilled ? 'amount-positive' : undefined}>
+                  {formatCurrency(o.remaining)}
+                </span>
+                {o.targetDate && <span className="text-muted">due {formatDate(o.targetDate)}</span>}
+                <Countdown targetDate={o.targetDate} remaining={o.remaining} today={today} />
+              </div>
 
               {hasMultipleLineItems && (
                 <>
@@ -379,7 +448,6 @@ export default function Obligations() {
                         <tr>
                           <th>Label</th>
                           <th style={{ textAlign: 'right' }}>Target</th>
-                          <th>Target Date</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -389,7 +457,6 @@ export default function Obligations() {
                             <td style={{ textAlign: 'right' }} className={item.remaining <= 0 ? 'amount-positive' : undefined}>
                               {formatCurrency(item.remaining)}
                             </td>
-                            <td>{item.targetDate ? formatDate(item.targetDate) : '—'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -421,21 +488,65 @@ export default function Obligations() {
               <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. store card, 0% promo" />
             </div>
 
+            <div className="field">
+              <label>Due Date (optional)</label>
+              <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
+              <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                One date per obligation — if a target amount is due on a different date, give it its own obligation
+                (or use Clone).
+              </p>
+            </div>
+
             {!editingId && (
-              <>
-                <div className="field">
-                  <label>First Target Amount</label>
-                  <CurrencyInput value={firstAmount} onChange={setFirstAmount} placeholder="e.g. $1,200.00" />
-                </div>
-                <div className="field">
-                  <label>First Target Date (optional)</label>
-                  <input type="date" value={firstTargetDate} onChange={(e) => setFirstTargetDate(e.target.value)} />
-                </div>
-                <p className="text-muted" style={{ fontSize: 12, marginTop: -8 }}>
-                  You can add more target amounts (with their own dates) after creating the obligation.
+              <div className="field">
+                <label>First Target Amount</label>
+                <CurrencyInput value={firstAmount} onChange={setFirstAmount} placeholder="e.g. $1,200.00" />
+                <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  You can add more target amounts after creating the obligation.
                 </p>
-              </>
+              </div>
             )}
+
+            <div className="field">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} />
+                This obligation repeats
+              </label>
+              {recurring && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                  <span>Every</span>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={recurrenceInterval}
+                    onChange={(e) => setRecurrenceInterval(e.target.value)}
+                    style={{ width: 64 }}
+                  />
+                  <select value={recurrenceUnit} onChange={(e) => setRecurrenceUnit(e.target.value as ObligationRecurrenceUnit)}>
+                    {RECURRENCE_UNITS.map((u) => (
+                      <option key={u} value={u}>
+                        {parsedInterval === 1 ? u : `${u}s`}
+                      </option>
+                    ))}
+                  </select>
+                  {recurrenceUnit === 'month' && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={recurrenceLastDayOfMonth}
+                        onChange={(e) => setRecurrenceLastDayOfMonth(e.target.checked)}
+                      />
+                      Last day of month
+                    </label>
+                  )}
+                </div>
+              )}
+              <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                Recurrence doesn't create future obligations automatically — use Clone when the next one comes due.
+                A recurring obligation due more than a year out is hidden from the list until it's within a year.
+              </p>
+            </div>
 
             <div className="field">
               <label>Linked Account (optional)</label>
@@ -462,7 +573,8 @@ export default function Obligations() {
               {!accountId && (
                 <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
                   Link an account above to enable this — new transactions on that account (manual or imported) will
-                  be suggested or auto-assigned to this obligation.
+                  be suggested or auto-assigned to this obligation. When more than one of the account's obligations
+                  has this on, the one due soonest wins.
                 </p>
               )}
             </div>
@@ -480,7 +592,6 @@ export default function Obligations() {
                       <th></th>
                       <th>Label</th>
                       <th style={{ textAlign: 'right' }}>Target</th>
-                      <th>Target Date</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -509,7 +620,6 @@ export default function Obligations() {
                         <td style={{ textAlign: 'right' }} className={item.remaining <= 0 ? 'amount-positive' : undefined}>
                           {formatCurrency(item.remaining)}
                         </td>
-                        <td>{item.targetDate ? formatDate(item.targetDate) : '—'}</td>
                         <td>
                           <div className="ledger-actions">
                             <button className="btn-link" onClick={() => openEditLineItem(item)}>
@@ -536,10 +646,6 @@ export default function Obligations() {
                         <label>Target Amount</label>
                         <CurrencyInput value={liAmount} onChange={setLiAmount} placeholder="e.g. $450.00" />
                       </div>
-                    </div>
-                    <div className="field">
-                      <label>Target Date (optional)</label>
-                      <input type="date" value={liTargetDate} onChange={(e) => setLiTargetDate(e.target.value)} />
                     </div>
                     {liError && <p style={{ color: 'var(--color-accent-red)', fontSize: 13 }}>{liError}</p>}
                     <div style={{ display: 'flex', gap: 8 }}>
@@ -571,6 +677,31 @@ export default function Obligations() {
               </button>
               <button className="btn btn-primary" disabled={!canSave} onClick={handleSave}>
                 {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Obligation'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cloneSource && (
+        <div className="modal-backdrop" onClick={closeClone}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Clone Obligation</h2>
+            <p className="text-muted" style={{ fontSize: 13 }}>
+              Creates a new obligation named "{cloneSource.label}" with the same target amounts, account, and
+              recurrence, on a new due date. The original is left untouched.
+            </p>
+            <div className="field">
+              <label>New Due Date</label>
+              <input type="date" value={cloneDate} onChange={(e) => setCloneDate(e.target.value)} autoFocus />
+            </div>
+            {cloneError && <p style={{ color: 'var(--color-accent-red)', fontSize: 13 }}>{cloneError}</p>}
+            <div className="modal-actions">
+              <button className="btn" onClick={closeClone}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" disabled={cloning} onClick={handleClone}>
+                {cloning ? 'Cloning…' : 'Clone'}
               </button>
             </div>
           </div>

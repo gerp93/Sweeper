@@ -236,9 +236,8 @@ export class ProjectionService {
   private obligationsPaidBy(date: string): number {
     return this.obligationService
       .getAllObligations()
-      .flatMap((o) => o.dateGroups)
-      .filter((g) => g.targetDate != null && g.targetDate <= date)
-      .reduce((sum, g) => sum + g.remaining, 0);
+      .filter((o) => o.targetDate != null && o.targetDate <= date)
+      .reduce((sum, o) => sum + o.remaining, 0);
   }
 
   // Accounts holding money already spoken for by an unpaid Obligation -- their transactions

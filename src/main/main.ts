@@ -363,6 +363,9 @@ function registerIPCHandlers() {
     obligationService.deleteObligation(id);
     return { success: true };
   });
+  ipcMain.handle('obligations:clone', (_, id: string, newTargetDate: string | null) =>
+    obligationService.cloneObligation(id, newTargetDate)
+  );
 
   // Obligation line item handlers
   ipcMain.handle('obligationLineItems:create', (_, obligationId: string, input: CreateObligationLineItemInput) =>
