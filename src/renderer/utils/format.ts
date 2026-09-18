@@ -40,6 +40,16 @@ export function firstDayOfMonth(key: string): string {
   return `${key}-01`;
 }
 
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)} KB`;
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`;
+  const gb = mb / 1024;
+  return `${gb.toFixed(gb < 10 ? 1 : 0)} GB`;
+}
+
 export function lastDayOfMonth(key: string): string {
   const [year, month] = key.split('-').map(Number);
   const last = new Date(year, month, 0); // day 0 of next month = last day of this month

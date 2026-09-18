@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { BalanceAnchor } from '../../shared/types/balanceAnchor';
 import { HelocSettings } from '../../shared/types/helocSettings';
 import CurrencyInput from '../components/CurrencyInput';
-import { todayIso } from '../utils/format';
+import { todayIso, formatFileSize } from '../utils/format';
 import { useTheme } from '../context/ThemeContext';
 import { THEME_LABELS } from '../utils/themes';
 
@@ -28,9 +28,12 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<SettingsTab>('data');
 
-  const [dbLocation, setDbLocation] = useState<{ path: string; isDefault: boolean; defaultPath: string } | null>(
-    null
-  );
+  const [dbLocation, setDbLocation] = useState<{
+    path: string;
+    isDefault: boolean;
+    defaultPath: string;
+    sizeBytes: number | null;
+  } | null>(null);
   const [dbBusy, setDbBusy] = useState(false);
 
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -292,6 +295,11 @@ export default function Settings() {
                 <div className="field">
                   <label>Current File{dbLocation.isDefault ? ' (default)' : ''}</label>
                   <input value={dbLocation.path} readOnly style={{ fontFamily: 'monospace', fontSize: 12 }} />
+                  {dbLocation.sizeBytes != null && (
+                    <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                      {formatFileSize(dbLocation.sizeBytes)}
+                    </p>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button className="btn" disabled={dbBusy} onClick={handleUseExistingFile}>

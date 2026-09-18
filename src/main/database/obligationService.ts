@@ -120,6 +120,13 @@ export function computeNextOccurrenceDate(fromDate: string, recurrence: Obligati
   return next;
 }
 
+// Recurring obligations more than a year out are hidden by the renderer -- auto-spawning stops
+// at the same horizon, so there's never a real row sitting out there that far ahead waiting to
+// be hidden (a manually-set far-future date is the only way one shows up).
+const RECURRING_HORIZON_DAYS = 365;
+// Guards against a runaway loop if a bad interval (e.g. 0) ever slipped past validation.
+const MAX_AUTO_SPAWN_PER_SERIES = 500;
+
 export class ObligationService {
   constructor(private db: Database) {}
 
@@ -181,6 +188,7 @@ export class ObligationService {
   }
 
   getAllObligations(): Obligation[] {
+    this.ensureRecurringOccurrencesGenerated();
     const results = this.db.exec(`
       SELECT
         id,
@@ -256,12 +264,22 @@ export class ObligationService {
 
   createObligation(input: CreateObligationInput): Obligation {
     const id = uuidv4();
+    // A freshly-created obligation is the head of its own series -- series_id only matters
+    // once something (a manual Clone, or auto-spawn below) creates a successor and needs to
+    // know which chain it belongs to.
+    return this.insertObligationRecord(id, input, id);
+  }
+
+  // Shared by createObligation, cloneObligation, and the auto-spawn maintenance pass -- the
+  // only difference between "a brand-new obligation" and "the next occurrence of an existing
+  // recurring series" is which series_id gets attached.
+  private insertObligationRecord(id: string, input: CreateObligationInput, seriesId: string): Obligation {
     const now = new Date().toISOString();
 
     this.db.run(
       `INSERT INTO heloc_obligations
-         (id, label, note, account_id, auto_allocate, target_date, recurrence_unit, recurrence_interval, recurrence_last_day_of_month, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, label, note, account_id, auto_allocate, target_date, recurrence_unit, recurrence_interval, recurrence_last_day_of_month, series_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.label,
@@ -272,6 +290,7 @@ export class ObligationService {
         input.recurrence?.unit ?? null,
         input.recurrence?.interval ?? null,
         input.recurrence?.lastDayOfMonth ? 1 : 0,
+        seriesId,
         now,
         now,
       ]
@@ -336,21 +355,110 @@ export class ObligationService {
 
   // Duplicates label/note/account/auto-allocate/recurrence and every line item's label+amount
   // (fresh ids, no allocation history) into a brand-new obligation on newTargetDate -- the way
-  // to represent "the same obligation coming due again" without a single obligation trying to
-  // carry more than one date.
+  // to manually represent "the same obligation coming due again" without a single obligation
+  // trying to carry more than one date. Stays in the source's series (rather than starting a
+  // new one of its own) so the auto-spawn pass below picks up the chain from wherever this
+  // clone left it, instead of running two parallel chains from the same original.
   cloneObligation(id: string, newTargetDate: string | null): Obligation {
     const source = this.getObligationById(id);
     if (!source) throw new Error(`Obligation with id ${id} not found`);
 
-    return this.createObligation({
-      label: source.label,
-      note: source.note,
-      accountId: source.accountId,
-      autoAllocate: source.autoAllocate,
-      targetDate: newTargetDate,
-      recurrence: source.recurrence,
-      lineItems: source.lineItems.map((item) => ({ label: item.label, amount: item.amount })),
-    });
+    return this.insertObligationRecord(
+      uuidv4(),
+      {
+        label: source.label,
+        note: source.note,
+        accountId: source.accountId,
+        autoAllocate: source.autoAllocate,
+        targetDate: newTargetDate,
+        recurrence: source.recurrence,
+        lineItems: source.lineItems.map((item) => ({ label: item.label, amount: item.amount })),
+      },
+      this.getSeriesId(id)
+    );
+  }
+
+  private getSeriesId(obligationId: string): string {
+    const stmt = this.db.prepare(`SELECT series_id FROM heloc_obligations WHERE id = ?`);
+    stmt.bind([obligationId]);
+    if (!stmt.step()) {
+      stmt.free();
+      throw new Error(`Obligation with id ${obligationId} not found`);
+    }
+    const seriesId = stmt.get()[0] as string;
+    stmt.free();
+    return seriesId;
+  }
+
+  // The heart of "recurrence should never need a manual Clone": for every recurring series,
+  // find whichever occurrence is currently its latest (by target date) and keep spawning real
+  // successor obligations -- fresh, unpaid, same label/account/recurrence -- until the next one
+  // would land beyond the one-year display horizon. Runs every time the obligations list is
+  // read, so a series never falls behind no matter how long the app goes unopened; it only ever
+  // creates rows, never touches ones that already exist.
+  private ensureRecurringOccurrencesGenerated(): void {
+    const today = new Date().toISOString().slice(0, 10);
+    const horizon = addDays(today, RECURRING_HORIZON_DAYS);
+
+    const results = this.db.exec(`
+      SELECT
+        id,
+        series_id as seriesId,
+        target_date as targetDate,
+        recurrence_unit as recurrenceUnit,
+        recurrence_interval as recurrenceInterval,
+        recurrence_last_day_of_month as recurrenceLastDayOfMonth
+      FROM heloc_obligations
+      WHERE recurrence_unit IS NOT NULL AND recurrence_interval IS NOT NULL AND target_date IS NOT NULL
+    `);
+    if (results.length === 0) return;
+
+    // Per series, keep only whichever member is currently due latest -- that's the one to grow
+    // the next occurrence from, regardless of whether it got there by auto-spawn or a manual Clone.
+    const latestBySeries = new Map<string, { id: string; targetDate: string; recurrence: ObligationRecurrence }>();
+    for (const row of results[0].values) {
+      const obj: any = {};
+      results[0].columns.forEach((col, idx) => (obj[col] = row[idx]));
+      const targetDate = obj.targetDate as string;
+      const seriesId = obj.seriesId as string;
+      const existing = latestBySeries.get(seriesId);
+      if (!existing || targetDate > existing.targetDate) {
+        latestBySeries.set(seriesId, {
+          id: obj.id as string,
+          targetDate,
+          recurrence: {
+            unit: obj.recurrenceUnit as ObligationRecurrence['unit'],
+            interval: obj.recurrenceInterval as number,
+            lastDayOfMonth: Boolean(obj.recurrenceLastDayOfMonth),
+          },
+        });
+      }
+    }
+
+    for (const [seriesId, latest] of latestBySeries) {
+      let cursorId = latest.id;
+      let cursorDate = latest.targetDate;
+      for (let i = 0; i < MAX_AUTO_SPAWN_PER_SERIES; i++) {
+        const next = computeNextOccurrenceDate(cursorDate, latest.recurrence);
+        if (next > horizon) break;
+        const source = this.getObligationById(cursorId)!;
+        const spawned = this.insertObligationRecord(
+          uuidv4(),
+          {
+            label: source.label,
+            note: source.note,
+            accountId: source.accountId,
+            autoAllocate: source.autoAllocate,
+            targetDate: next,
+            recurrence: source.recurrence,
+            lineItems: source.lineItems.map((item) => ({ label: item.label, amount: item.amount })),
+          },
+          seriesId
+        );
+        cursorId = spawned.id;
+        cursorDate = next;
+      }
+    }
   }
 
   private insertLineItem(obligationId: string, input: CreateObligationLineItemInput, defaultPriority: number): string {
