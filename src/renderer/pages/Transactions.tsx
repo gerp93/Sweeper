@@ -868,7 +868,7 @@ export default function Transactions() {
                   className={projectedNetCashFlow >= 0 ? 'amount-positive' : 'amount-negative'}
                   style={{ fontSize: 13, opacity: 0.8 }}
                 >
-                  Projected (incl. pencilled-in bills/income): {formatCurrency(projectedNetCashFlow)}
+                  Projected (incl. upcoming bills/income): {formatCurrency(projectedNetCashFlow)}
                 </div>
               )}
             </div>

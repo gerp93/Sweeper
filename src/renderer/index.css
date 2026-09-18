@@ -469,6 +469,7 @@ table {
 
 .ledger-nav-bottom {
   justify-content: center;
+  gap: 20px;
   border-bottom: none;
   border-top: 1px solid var(--color-primary-action-hover);
   font-weight: 600;
