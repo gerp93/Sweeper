@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Obligation, ObligationLineItem, ObligationRecurrence, ObligationRecurrenceUnit } from '../../shared/types/obligation';
 import { Account } from '../../shared/types/account';
 import { SpendableBalance } from '../../shared/types/balanceAnchor';
@@ -373,105 +373,141 @@ export default function BalloonPayments() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="card empty-state">Loading…</div>
-      ) : visibleObligations.length === 0 ? (
-        <div className="card empty-state">
-          {obligations.length === 0 ? 'No obligations set up yet.' : 'No obligations due within the next year.'}
-        </div>
-      ) : (
-        visibleObligations.map((o) => {
-          const overdue = o.targetDate != null && o.targetDate < today && o.remaining > 0;
-          const fulfilled = o.remaining <= 0;
-          const linkedAccountName = accountName(o.accountId);
-          const expanded = expandedId === o.id;
-          const hasMultipleLineItems = o.lineItems.length > 1;
+      <div className="card" style={{ padding: 0 }}>
+        {loading ? (
+          <div className="empty-state">Loading…</div>
+        ) : visibleObligations.length === 0 ? (
+          <div className="empty-state">
+            {obligations.length === 0 ? 'No obligations set up yet.' : 'No obligations due within the next year.'}
+          </div>
+        ) : (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Label</th>
+                <th style={{ textAlign: 'right' }}>Remaining</th>
+                <th>Due Date</th>
+                <th>Linked Account</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleObligations.map((o) => {
+                const overdue = o.targetDate != null && o.targetDate < today && o.remaining > 0;
+                const fulfilled = o.remaining <= 0;
+                const linkedAccountName = accountName(o.accountId);
+                const expanded = expandedId === o.id;
+                const hasMultipleLineItems = o.lineItems.length > 1;
 
-          return (
-            <div className="card" key={o.id} style={{ marginBottom: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 15 }}>
-                    {o.label}
-                    {fulfilled && (
-                      <span className="pill pill-included" style={{ marginLeft: 8 }}>
-                        Fulfilled
-                      </span>
+                return (
+                  <Fragment key={o.id}>
+                    <tr>
+                      <td>
+                        {hasMultipleLineItems && (
+                          <button
+                            className="btn-link"
+                            onClick={() => toggleExpand(o.id)}
+                            title={expanded ? 'Hide individual amounts' : `Show ${o.lineItems.length} individual amounts`}
+                          >
+                            {expanded ? '▲' : '▾'}
+                          </button>
+                        )}
+                      </td>
+                      <td>
+                        {o.label}
+                        {fulfilled && (
+                          <span className="pill pill-included" style={{ marginLeft: 8 }}>
+                            Fulfilled
+                          </span>
+                        )}
+                        {overdue && !fulfilled && (
+                          <span className="pill pill-collision" style={{ marginLeft: 8 }}>
+                            Past due
+                          </span>
+                        )}
+                        {o.recurrence && (
+                          <span className="pill pill-included" style={{ marginLeft: 8 }}>
+                            {recurrenceLabel(o.recurrence)}
+                          </span>
+                        )}
+                        {o.note && (
+                          <div className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>
+                            {o.note}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right' }} className={fulfilled ? 'amount-positive' : undefined}>
+                        {formatCurrency(o.remaining)}
+                        {hasMultipleLineItems && (
+                          <div className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>
+                            {o.lineItems.length} amounts
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        {o.targetDate ? formatDate(o.targetDate) : '—'}
+                        <div style={{ fontSize: 12, marginTop: 2 }}>
+                          <Countdown targetDate={o.targetDate} remaining={o.remaining} today={today} />
+                        </div>
+                      </td>
+                      <td>
+                        {linkedAccountName ?? '—'}
+                        {linkedAccountName && o.autoAllocate && (
+                          <span className="pill pill-included" style={{ marginLeft: 6 }}>
+                            Auto
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        <div className="ledger-actions">
+                          <button className="btn-link" onClick={() => openClone(o)}>
+                            Clone
+                          </button>
+                          <button className="btn-link" onClick={() => startEdit(o)}>
+                            Edit
+                          </button>
+                          <button className="btn-link btn-link-danger" onClick={() => handleDelete(o.id)}>
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {expanded && hasMultipleLineItems && (
+                      <tr>
+                        <td></td>
+                        <td colSpan={5} style={{ padding: '0 0 12px' }}>
+                          <table className="data-table" style={{ margin: 0 }}>
+                            <thead>
+                              <tr>
+                                <th>Label</th>
+                                <th style={{ textAlign: 'right' }}>Target</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {o.lineItems.map((item) => (
+                                <tr key={item.id}>
+                                  <td>{item.label ?? '—'}</td>
+                                  <td
+                                    style={{ textAlign: 'right' }}
+                                    className={item.remaining <= 0 ? 'amount-positive' : undefined}
+                                  >
+                                    {formatCurrency(item.remaining)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
                     )}
-                    {overdue && !fulfilled && (
-                      <span className="pill pill-collision" style={{ marginLeft: 8 }}>
-                        Past due
-                      </span>
-                    )}
-                    {o.recurrence && (
-                      <span className="pill pill-included" style={{ marginLeft: 8 }}>
-                        {recurrenceLabel(o.recurrence)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>
-                    {linkedAccountName ? `Linked to ${linkedAccountName}` : 'No linked account'}
-                    {linkedAccountName && o.autoAllocate && (
-                      <span className="pill pill-included" style={{ marginLeft: 6 }}>
-                        Auto
-                      </span>
-                    )}
-                    {o.note && <> · {o.note}</>}
-                  </div>
-                </div>
-                <div className="ledger-actions">
-                  <button className="btn-link" onClick={() => openClone(o)}>
-                    Clone
-                  </button>
-                  <button className="btn-link" onClick={() => startEdit(o)}>
-                    Edit
-                  </button>
-                  <button className="btn-link btn-link-danger" onClick={() => handleDelete(o.id)}>
-                    Delete
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ marginTop: 10, display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 22, fontWeight: 700 }} className={fulfilled ? 'amount-positive' : undefined}>
-                  {formatCurrency(o.remaining)}
-                </span>
-                {o.targetDate && <span className="text-muted">due {formatDate(o.targetDate)}</span>}
-                <Countdown targetDate={o.targetDate} remaining={o.remaining} today={today} />
-              </div>
-
-              {hasMultipleLineItems && (
-                <>
-                  <button className="btn-link" style={{ marginTop: 8 }} onClick={() => toggleExpand(o.id)}>
-                    {expanded ? 'Hide individual amounts ▲' : `Show individual amounts (${o.lineItems.length}) ▾`}
-                  </button>
-
-                  {expanded && (
-                    <table className="data-table" style={{ marginTop: 8 }}>
-                      <thead>
-                        <tr>
-                          <th>Label</th>
-                          <th style={{ textAlign: 'right' }}>Target</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {o.lineItems.map((item) => (
-                          <tr key={item.id}>
-                            <td>{item.label ?? '—'}</td>
-                            <td style={{ textAlign: 'right' }} className={item.remaining <= 0 ? 'amount-positive' : undefined}>
-                              {formatCurrency(item.remaining)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </>
-              )}
-            </div>
-          );
-        })
-      )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
 
       {modalOpen && (
         <div className="modal-backdrop" onClick={resetForm}>
