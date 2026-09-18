@@ -50,7 +50,7 @@ export default function RecurringBills() {
     ]);
 
     setDetecting(true);
-    const created = await syncAutoDetectedBills(txs, billList);
+    const created = await syncAutoDetectedBills(txs, billList, accts);
     setDetecting(false);
     if (created.length > 0) {
       setJustAutoAdded((prev) => [...prev, ...created]);
@@ -205,7 +205,7 @@ export default function RecurringBills() {
               Auto-added {justAutoAdded.length} recurring bill{justAutoAdded.length === 1 ? '' : 's'}
             </h2>
             <button className="btn" onClick={dismissAutoAddedNotice}>
-              Dismiss
+              Got it, hide this note
             </button>
           </div>
           <ul style={{ margin: '0 0 8px', paddingLeft: 20, fontSize: 13 }}>

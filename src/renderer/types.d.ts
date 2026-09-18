@@ -20,6 +20,7 @@ import {
   ProjectedBalancePoint,
   ProjectionSeriesPoint,
   ProjectionScenarioOptions,
+  IncomeProjectionOccurrence,
 } from '../shared/types/projection';
 import {
   RecurringBill,
@@ -114,6 +115,11 @@ declare global {
           excludedIds?: string[],
           options?: ProjectionScenarioOptions
         ) => Promise<ProjectionSeriesPoint[]>;
+        getMonthlyIncomeOccurrences: (
+          monthStart: string,
+          monthEnd: string,
+          excludedIds?: string[]
+        ) => Promise<IncomeProjectionOccurrence[]>;
       };
       recurringBills: {
         getAll: () => Promise<RecurringBill[]>;

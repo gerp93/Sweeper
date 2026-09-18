@@ -1,12 +1,13 @@
 import { Transaction } from '../../shared/types/transaction';
 import { RecurringBill } from '../../shared/types/recurringBill';
+import { Account } from '../../shared/types/account';
 import { findRecurringBillCandidates, RecurringBillCandidate } from './recurrenceSimilarity';
 
 const HANDLED_STORAGE_KEY = 'sweeper.autoHandledRecurringBillCandidates';
 
 function candidateKey(c: RecurringBillCandidate): string {
   const earliest = c.transactions[c.transactions.length - 1];
-  return `${c.accountId}|${c.medianAmount.toFixed(2)}|${c.suggestedFrequency}|${earliest.date}`;
+  return `${c.accountId}|${c.amountMode}|${c.suggestedFrequency}|${earliest.date}`;
 }
 
 function loadHandled(): Set<string> {
@@ -30,20 +31,6 @@ export function resetAutoDetection() {
   saveHandled(new Set());
 }
 
-function mostCommonDescription(c: RecurringBillCandidate): string {
-  const counts = new Map<string, number>();
-  for (const t of c.transactions) counts.set(t.description, (counts.get(t.description) ?? 0) + 1);
-  let best = c.transactions[0]?.description ?? 'Recurring bill';
-  let bestCount = 0;
-  for (const [desc, count] of counts) {
-    if (count > bestCount) {
-      best = desc;
-      bestCount = count;
-    }
-  }
-  return best;
-}
-
 // Silently creates a real RecurringBill for every confident, still-active (see
 // RECENCY_WINDOW_DAYS in recurrenceSimilarity.ts) pattern in history that hasn't already been
 // auto-created or explicitly rejected (by deleting it) before. No review step -- if one's wrong,
@@ -51,7 +38,8 @@ function mostCommonDescription(c: RecurringBillCandidate): string {
 // created this call, purely so the caller can show a brief notice.
 export async function syncAutoDetectedBills(
   transactions: Transaction[],
-  existingBills: RecurringBill[]
+  existingBills: RecurringBill[],
+  accounts: Account[]
 ): Promise<RecurringBill[]> {
   const handled = loadHandled();
   const candidates = findRecurringBillCandidates(transactions, existingBills);
@@ -63,14 +51,27 @@ export async function syncAutoDetectedBills(
 
     try {
       const bill = await window.electronAPI.recurringBills.create({
-        label: mostCommonDescription(c),
-        amountMode: 'fixed',
-        fixedAmount: c.medianAmount,
+        // The linked account already identifies this bill everywhere it's shown -- use its
+        // name rather than a raw bank statement description as the label.
+        label: accounts.find((a) => a.id === c.accountId)?.friendlyName ?? 'Recurring bill',
+        amountMode: c.amountMode,
+        fixedAmount: c.amountMode === 'fixed' ? c.medianAmount : null,
         frequency: c.suggestedFrequency,
         startDate: c.suggestedStartDate,
         endDate: null,
         accountId: c.accountId,
       });
+
+      // An 'auto-average' bill resolves its amount from its own linked history -- link the
+      // very transactions that established the pattern so the average has real data
+      // immediately, instead of showing "no confirmed history yet" for a bill whose history
+      // we just finished reading.
+      if (c.amountMode === 'auto-average') {
+        for (const tx of c.transactions) {
+          await window.electronAPI.transactions.update(tx.id, { recurringBillId: bill.id });
+        }
+      }
+
       created.push(bill);
       handled.add(key);
     } catch (e) {

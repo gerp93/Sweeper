@@ -6,6 +6,7 @@ import {
   ProjectedBalancePoint,
   ProjectionSeriesPoint,
   ProjectionScenarioOptions,
+  IncomeProjectionOccurrence,
 } from '../../shared/types/projection';
 import { v4 as uuidv4 } from 'uuid';
 import { saveDatabase } from './schema';
@@ -151,6 +152,34 @@ export class ProjectionService {
     const results = this.db.exec(`SELECT ${SELECT_COLUMNS} FROM income_projections ORDER BY start_date ASC`);
     if (results.length === 0) return [];
     return results[0].values.map((row) => rowToProjection(results[0].columns, row));
+  }
+
+  // Every income projection's occurrence in [monthStart, monthEnd], clamped to strictly after
+  // today (today's baseline already reflects anything on or before it as real cash) -- for the
+  // Transactions ledger's "pencilled in" reminder rows. No "overdue"/reconciled concept here
+  // unlike Recurring Bills: there's no link from a real transaction back to a specific income
+  // projection occurrence, only the account-level "actualIncomeReceivedInMonth" aggregate used
+  // elsewhere, so an occurrence just stops being returned once its month is in the past.
+  getMonthlyIncomeOccurrences(
+    monthStart: string,
+    monthEnd: string,
+    excludedIds: string[] = []
+  ): IncomeProjectionOccurrence[] {
+    const today = new Date().toISOString().slice(0, 10);
+    const windowStart = monthStart > addDays(today, 1) ? monthStart : addDays(today, 1);
+    if (windowStart > monthEnd) return [];
+
+    const excluded = new Set(excludedIds);
+    return this.getAllProjections()
+      .filter((p) => !excluded.has(p.id))
+      .flatMap((p) =>
+        expandOccurrences(p, windowStart, monthEnd).map((expectedDate) => ({
+          projectionId: p.id,
+          label: p.label,
+          expectedDate,
+          expectedAmount: p.amount,
+        }))
+      );
   }
 
   createProjection(input: CreateIncomeProjectionInput): IncomeProjection {

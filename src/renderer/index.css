@@ -496,22 +496,25 @@ table {
   white-space: nowrap;
 }
 
-/* A Recurring Bill's expected-but-not-yet-real occurrence -- never a real transaction, just a
-   forward-looking reminder computed live. */
-.ledger-row-virtual td {
-  font-style: italic;
-  opacity: 0.7;
-  border-top: 1px dashed var(--color-primary-action-hover);
-  border-bottom: 1px dashed var(--color-primary-action-hover);
-}
-
-/* Same, but its expected date has already passed with nothing confirmed against it -- flagged
-   for the user to check (autopay missed? already paid but not yet imported/confirmed?). */
-.ledger-row-overdue td {
+/* A pencilled-in expected-but-not-yet-real occurrence (a Recurring Bill or an Income
+   Projection) -- never a real transaction, just a forward-looking reminder computed live.
+   Tinted by sign so it reads at a glance which direction the money moves: reddish for an
+   expected expense (a Recurring Bill occurrence, whether upcoming or overdue), greenish for
+   expected income (a paycheck, a bonus). An overdue bill still carries its own text label
+   ("overdue — expected ...") in the description cell -- the background stays the same red as
+   an upcoming one, since the ask was a uniform tint, not a second color for severity. */
+.ledger-row-projected-expense td {
   font-style: italic;
   border-top: 1px dashed var(--color-accent-red);
   border-bottom: 1px dashed var(--color-accent-red);
-  background: rgba(220, 38, 38, 0.08);
+  background: rgba(220, 38, 38, 0.1);
+}
+
+.ledger-row-projected-income td {
+  font-style: italic;
+  border-top: 1px dashed var(--color-accent-green);
+  border-bottom: 1px dashed var(--color-accent-green);
+  background: rgba(34, 197, 94, 0.1);
 }
 
 .btn-link {

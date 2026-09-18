@@ -402,6 +402,11 @@ function registerIPCHandlers() {
     (_, months: number, excludedIds?: string[], options?: ProjectionScenarioOptions) =>
       projectionService.getProjectionSeries(months, excludedIds, options)
   );
+  ipcMain.handle(
+    'projections:getMonthlyIncomeOccurrences',
+    (_, monthStart: string, monthEnd: string, excludedIds?: string[]) =>
+      projectionService.getMonthlyIncomeOccurrences(monthStart, monthEnd, excludedIds)
+  );
 
   // Recurring bill handlers
   ipcMain.handle('recurringBills:getAll', () => recurringBillService.getAllBills());
