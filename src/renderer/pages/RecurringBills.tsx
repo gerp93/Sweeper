@@ -24,7 +24,11 @@ export default function RecurringBills() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [label, setLabel] = useState('');
-  const [amountMode, setAmountMode] = useState<RecurringBillAmountMode>('fixed');
+  // Auto-average is the default: even a genuinely flat bill converges to the same number once
+  // it has real confirmed history, so there's little reason to reach for 'fixed' unless a bill
+  // has no linkable account history at all (or the user wants a locked-in number regardless of
+  // what actually posts).
+  const [amountMode, setAmountMode] = useState<RecurringBillAmountMode>('auto-average');
   const [fixedAmount, setFixedAmount] = useState('');
   const [frequency, setFrequency] = useState<ProjectionFrequency>('monthly');
   const [startDate, setStartDate] = useState(todayIso());
@@ -92,7 +96,7 @@ export default function RecurringBills() {
     setModalOpen(false);
     setEditingId(null);
     setLabel('');
-    setAmountMode('fixed');
+    setAmountMode('auto-average');
     setFixedAmount('');
     setFrequency('monthly');
     setStartDate(todayIso());
@@ -310,8 +314,10 @@ export default function RecurringBills() {
                 <CurrencyInput value={fixedAmount} onChange={setFixedAmount} placeholder="e.g. $70.00" />
               ) : (
                 <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>
-                  Averages the last few real transactions you've confirmed against this bill. Shows "no confirmed
-                  history yet" until you've confirmed at least one — never a guessed number.
+                  {/* Keep "6" in sync with AUTO_AVERAGE_LOOKBACK in recurringBillService.ts. */}
+                  Averages the last 6 real transactions you've confirmed against this bill (or fewer, until 6 have
+                  been confirmed). Shows "no confirmed history yet" until you've confirmed at least one — never a
+                  guessed number.
                 </p>
               )}
             </div>
