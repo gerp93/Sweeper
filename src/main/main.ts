@@ -429,6 +429,7 @@ function registerIPCHandlers() {
   ipcMain.handle('recurringBills:findCandidateMatches', (_, transactionIds: string[]) =>
     recurringBillService.findCandidateMatches(transactionIds)
   );
+  ipcMain.handle('recurringBills:getAmountInfo', () => recurringBillService.getAmountInfo());
 
   // Database location handlers
   ipcMain.handle('dbLocation:get', () => ({

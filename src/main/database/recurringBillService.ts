@@ -6,6 +6,7 @@ import {
   RecurringBillOccurrence,
   BillOccurrenceStatus,
   RecurringBillMatchCandidate,
+  RecurringBillAmountInfo,
 } from '../../shared/types/recurringBill';
 import { v4 as uuidv4 } from 'uuid';
 import { saveDatabase } from './schema';
@@ -213,6 +214,21 @@ export class RecurringBillService {
     const has = stmt.step();
     stmt.free();
     return has;
+  }
+
+  // Current resolved amount for every bill, independent of any specific month -- fixes a
+  // display bug where a bill whose next occurrence falls in a future month (so it has no
+  // occurrence in "this month"'s list) incorrectly showed as having no history, even with real
+  // linked transactions.
+  getAmountInfo(): Record<string, RecurringBillAmountInfo> {
+    const out: Record<string, RecurringBillAmountInfo> = {};
+    for (const bill of this.getAllBills()) {
+      out[bill.id] = {
+        resolvedAmount: this.resolvedAmount(bill),
+        hasConfirmedHistory: bill.amountMode === 'fixed' ? true : this.hasConfirmedHistory(bill.id),
+      };
+    }
+    return out;
   }
 
   // Every occurrence of one bill in [windowStart, windowEnd], each carrying its resolved

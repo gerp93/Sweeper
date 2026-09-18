@@ -28,6 +28,17 @@ export function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+export function addDaysIso(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+export function daysBetween(fromDate: string, toDate: string): number {
+  const [fy, fm, fd] = fromDate.split('-').map(Number);
+  const [ty, tm, td] = toDate.split('-').map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86400000);
+}
+
 export function shiftMonthKey(key: string, delta: number): string {
   const [year, month] = key.split('-').map(Number);
   const totalMonths = year * 12 + (month - 1) + delta;
