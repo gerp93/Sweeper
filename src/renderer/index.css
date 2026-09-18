@@ -511,17 +511,22 @@ table {
    expected income (a paycheck, a bonus). An overdue bill still carries its own text label
    ("overdue — expected ...") in the description cell -- the background stays the same red as
    an upcoming one, since the ask was a uniform tint, not a second color for severity. */
+/* 2px, not 1px: with border-collapse the wider border always wins at a shared edge, so this
+   guarantees the dashed line stays visible even where it collapses against a neighboring
+   solid-bordered row (e.g. the "End of month" marker) -- at 1px, collapse's solid > dashed
+   style tiebreak was swallowing the dashed line on the last projected row, making the table
+   look like it cut off into a solid dark edge instead of finishing the dashed box. */
 .ledger-row-projected-expense td {
   font-style: italic;
-  border-top: 1px dashed var(--color-accent-red);
-  border-bottom: 1px dashed var(--color-accent-red);
+  border-top: 2px dashed var(--color-accent-red);
+  border-bottom: 2px dashed var(--color-accent-red);
   background: rgba(220, 38, 38, 0.1);
 }
 
 .ledger-row-projected-income td {
   font-style: italic;
-  border-top: 1px dashed var(--color-accent-green);
-  border-bottom: 1px dashed var(--color-accent-green);
+  border-top: 2px dashed var(--color-accent-green);
+  border-bottom: 2px dashed var(--color-accent-green);
   background: rgba(34, 197, 94, 0.1);
 }
 
