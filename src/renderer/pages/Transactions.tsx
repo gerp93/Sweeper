@@ -383,16 +383,24 @@ export default function Transactions() {
   }, [monthTransactions, virtualBillOccurrences, incomeOccurrences]);
 
   const ledgerRows = useMemo(() => {
-    // Only real transactions ever move the running balance -- a virtual row shows a preview
-    // (running + its expected amount) without writing back into `running`, so every real row
-    // after it still starts from the true, untouched balance.
+    // Only real transactions ever move `running` -- it's the authoritative real balance, and a
+    // real row's displayed balance must never be affected by virtual rows' presence (a real row
+    // always reflects `running` alone). `projectedRunning` is a second, separate accumulator:
+    // it tracks what the balance would be if every occurrence shown so far actually happens, so
+    // consecutive virtual rows correctly chain off each other (and off the real balance) instead
+    // of each one independently showing bom.balance + just its own amount. It resets to `running`
+    // on every real row, since a real transaction posting supersedes whatever was projected
+    // before it.
     let running = bom?.balance ?? 0;
+    let projectedRunning = running;
     return mergedRows.map((row) => {
       if (row.kind === 'real') {
         running += row.tx.amount;
+        projectedRunning = running;
         return { ...row, balance: running };
       }
-      return { ...row, balance: running + row.occurrence.expectedAmount };
+      projectedRunning += row.occurrence.expectedAmount;
+      return { ...row, balance: projectedRunning };
     });
   }, [mergedRows, bom]);
 
@@ -408,6 +416,13 @@ export default function Transactions() {
       virtualBillOccurrences.reduce((s, o) => s + o.expectedAmount, 0) +
       incomeOccurrences.reduce((s, o) => s + o.expectedAmount, 0)
     : null;
+
+  // The real "End of month" balance never moves for a future month with no real transactions
+  // yet -- that's correct (it's real, not projected), but shown alone it looks like the ledger
+  // isn't tracking the bills/income listed above it. This is the same end point the last row's
+  // own Balance column already lands on (ledgerRows chains virtual rows together via
+  // projectedRunning), surfaced next to "End of month" too so the two don't visually disagree.
+  const projectedEomBalance = ledgerRows.length > 0 ? ledgerRows[ledgerRows.length - 1].balance : null;
 
   function goToMonth(delta: number) {
     if (!currentMonth) return;
@@ -518,7 +533,7 @@ export default function Transactions() {
               }}
             >
               <h2 style={{ fontSize: 15, marginTop: 0, color: 'var(--color-accent-red)' }}>
-                ⚠ {urgentBillOccurrences.length} bill{urgentBillOccurrences.length === 1 ? '' : 's'} due today, tomorrow, or past due
+                ⚠ Action Needed
               </h2>
               <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13 }}>
                 {urgentBillOccurrences
@@ -527,7 +542,10 @@ export default function Transactions() {
                   .map((o) => (
                     <li key={`${o.billId}-${o.expectedDate}`} style={{ marginBottom: 4 }}>
                       <strong>{o.billLabel}</strong> — {formatCurrency(o.expectedAmount)} (
-                      {dueStatusText(o.expectedDate, o.status === 'overdue')}) —{' '}
+                      <strong style={{ textTransform: 'uppercase' }}>
+                        {dueStatusText(o.expectedDate, o.status === 'overdue')}
+                      </strong>
+                      ) —{' '}
                       <button className="btn-link" onClick={() => addRealTransactionForBill(o)}>
                         + Add real transaction
                       </button>
@@ -849,6 +867,16 @@ export default function Transactions() {
                     <td colSpan={4}>End of month</td>
                     <td style={{ textAlign: 'right' }} className={eom && eom.balance < 0 ? 'amount-negative' : undefined}>
                       {eom && formatCurrency(eom.balance)}
+                      {projectedEomBalance !== null &&
+                        eom &&
+                        Math.round(projectedEomBalance * 100) !== Math.round(eom.balance * 100) && (
+                          <div
+                            className={projectedEomBalance >= 0 ? 'amount-positive' : 'amount-negative'}
+                            style={{ fontSize: 11, fontWeight: 400, opacity: 0.8 }}
+                          >
+                            Projected: {formatCurrency(projectedEomBalance)}
+                          </div>
+                        )}
                     </td>
                     <td></td>
                     <td></td>
