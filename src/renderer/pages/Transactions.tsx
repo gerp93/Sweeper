@@ -45,7 +45,7 @@ function dueStatusText(expectedDate: string, overdue: boolean): string {
 }
 
 type ViewMode = 'month' | 'all';
-type SortKey = 'date' | 'description' | 'account' | 'amount';
+type SortKey = 'date' | 'account' | 'amount';
 type SortDir = 'asc' | 'desc';
 
 type LedgerRow =
@@ -441,7 +441,6 @@ export default function Transactions() {
     rows.sort((a, b) => {
       let cmp = 0;
       if (sortKey === 'date') cmp = a.tx.date < b.tx.date ? -1 : a.tx.date > b.tx.date ? 1 : 0;
-      else if (sortKey === 'description') cmp = a.tx.description.localeCompare(b.tx.description);
       else if (sortKey === 'account') cmp = a.accountLabel.localeCompare(b.accountLabel);
       else if (sortKey === 'amount') cmp = a.tx.amount - b.tx.amount;
       return sortDir === 'asc' ? cmp : -cmp;
@@ -588,10 +587,29 @@ export default function Transactions() {
         </>
       )}
 
-      <div className="page-header">
-        <div />
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          borderBottom: '1px solid var(--color-primary-action-hover)',
+          marginBottom: 20,
+        }}
+      >
+        <div className="tab-bar" style={{ border: 'none', marginBottom: 0 }}>
+          <button
+            className={`tab-button${viewMode === 'month' ? ' active' : ''}`}
+            onClick={() => setViewMode('month')}
+          >
+            Month View
+          </button>
+          <button className={`tab-button${viewMode === 'all' ? ' active' : ''}`} onClick={() => setViewMode('all')}>
+            All Transactions
+          </button>
+        </div>
         <button
           className="btn btn-primary"
+          style={{ marginBottom: 8 }}
           onClick={() => {
             setEditing(null);
             setPrefill(null);
@@ -599,18 +617,6 @@ export default function Transactions() {
           }}
         >
           + Add Transaction
-        </button>
-      </div>
-
-      <div className="tab-bar">
-        <button
-          className={`tab-button${viewMode === 'month' ? ' active' : ''}`}
-          onClick={() => setViewMode('month')}
-        >
-          Month View
-        </button>
-        <button className={`tab-button${viewMode === 'all' ? ' active' : ''}`} onClick={() => setViewMode('all')}>
-          All Transactions
         </button>
       </div>
 
@@ -910,9 +916,6 @@ export default function Transactions() {
                 <th className="sortable-th" onClick={() => toggleSort('date')}>
                   Date{sortIndicator('date')}
                 </th>
-                <th className="sortable-th" onClick={() => toggleSort('description')}>
-                  Description{sortIndicator('description')}
-                </th>
                 <th className="sortable-th" onClick={() => toggleSort('account')}>
                   Account{sortIndicator('account')}
                 </th>
@@ -927,7 +930,7 @@ export default function Transactions() {
             <tbody>
               {pagedTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="empty-state">
+                  <td colSpan={6} className="empty-state">
                     {transactions.length === 0 ? 'No transactions yet.' : 'No transactions match the current filters.'}
                   </td>
                 </tr>
@@ -935,7 +938,6 @@ export default function Transactions() {
                 pagedTransactions.map((tx) => (
                   <tr key={tx.id}>
                     <td>{formatDate(tx.date)}</td>
-                    <td>{tx.description}</td>
                     <td>{accountName(tx.accountId)}</td>
                     <td>{renderMemoInput(tx)}</td>
                     <td
