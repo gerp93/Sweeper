@@ -176,14 +176,13 @@ export default function RecurringBills() {
 
   return (
     <div>
-      <div className="page-header">
-        <h1>Recurring Bills</h1>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button className="btn btn-primary" onClick={startAdd}>
           + New Recurring Bill
         </button>
       </div>
 
-      <p className="text-muted" style={{ marginTop: -8, fontSize: 13, maxWidth: 720 }}>
+      <p className="text-muted" style={{ marginTop: 8, fontSize: 13, maxWidth: 720 }}>
         Bills you expect to pay — utilities, subscriptions, loan payments — show up here two ways: added by hand
         below, or auto-detected from a consistent, still-active pattern in your real history (last ~60 days). Either
         way, they surface as a forward-looking reminder in your ledger and, once confirmed against a real import, an
