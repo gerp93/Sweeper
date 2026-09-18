@@ -2,7 +2,6 @@ import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import ImportTransactions from './pages/ImportTransactions';
 import Transactions from './pages/Transactions';
 import ReconciliationPage from './pages/Reconciliation';
-import Obligations from './pages/Obligations';
 import Projections from './pages/Projections';
 import Accounts from './pages/Accounts';
 import Settings from './pages/Settings';
@@ -22,10 +21,10 @@ function App() {
               <Route path="/transactions" element={<Navigate to="/" replace />} />
               <Route path="/import" element={<ImportTransactions />} />
               <Route path="/reconcile" element={<ReconciliationPage />} />
-              <Route path="/obligations" element={<Obligations />} />
-              <Route path="/reserves" element={<Navigate to="/obligations" replace />} />
+              <Route path="/obligations" element={<Navigate to="/projections?tab=balloon" replace />} />
+              <Route path="/reserves" element={<Navigate to="/projections?tab=balloon" replace />} />
               <Route path="/projections" element={<Projections />} />
-              <Route path="/recurring-bills" element={<Navigate to="/obligations?tab=recurring" replace />} />
+              <Route path="/recurring-bills" element={<Navigate to="/projections?tab=recurring" replace />} />
               <Route path="/accounts" element={<Accounts />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>

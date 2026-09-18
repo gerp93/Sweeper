@@ -515,7 +515,8 @@ export default function Transactions() {
                   {formatCurrency(overallSpendable.balance - totalObligated)}
                 </div>
                 <div className="sub">
-                  {formatCurrency(totalObligated)} obligated · <Link to="/obligations">View obligations</Link>
+                  {formatCurrency(totalObligated)} obligated ·{' '}
+                  <Link to="/projections?tab=balloon">View obligations</Link>
                 </div>
               </div>
             )}
