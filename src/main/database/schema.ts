@@ -149,6 +149,7 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
       recurrence_unit TEXT,
       recurrence_interval INTEGER,
       recurrence_last_day_of_month INTEGER NOT NULL DEFAULT 0,
+      series_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE SET NULL
@@ -194,6 +195,15 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
   } catch (e) {
     // already exists
   }
+  try {
+    db.run(`ALTER TABLE heloc_obligations ADD COLUMN series_id TEXT`);
+  } catch (e) {
+    // already exists
+  }
+  // Migration: series_id links every occurrence a recurring obligation auto-spawns back to
+  // the same chain (so the "spawn the next one" pass can find each chain's latest member). A
+  // pre-existing obligation with no series_id yet is trivially its own series of one.
+  db.run(`UPDATE heloc_obligations SET series_id = id WHERE series_id IS NULL`);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS obligation_line_items (
@@ -468,6 +478,7 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
   db.run(`CREATE INDEX IF NOT EXISTS idx_reconciliations_date ON reconciliations(as_of_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_obligation_line_items_obligation ON obligation_line_items(obligation_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_heloc_obligations_target_date ON heloc_obligations(target_date)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_heloc_obligations_series ON heloc_obligations(series_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_income_projections_start_date ON income_projections(start_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_recurring_bills_start_date ON recurring_bills(start_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_recurring_bills_account ON recurring_bills(account_id)`);

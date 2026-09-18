@@ -125,7 +125,7 @@ declare global {
         findCandidateMatches: (transactionIds: string[]) => Promise<RecurringBillMatchCandidate[]>;
       };
       dbLocation: {
-        get: () => Promise<{ path: string; isDefault: boolean; defaultPath: string }>;
+        get: () => Promise<{ path: string; isDefault: boolean; defaultPath: string; sizeBytes: number | null }>;
         browseExisting: () => Promise<string | null>;
         browseNew: () => Promise<string | null>;
         set: (newPath: string) => Promise<{ success: boolean }>;

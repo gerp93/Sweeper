@@ -56,6 +56,15 @@ export function isUsingDefaultLocation(): boolean {
   return !getConfiguredDbPath();
 }
 
+// Null if the file hasn't been written yet (e.g. a brand-new database before its first save).
+export function getDbFileSizeBytes(): number | null {
+  try {
+    return fs.statSync(getEffectiveDbPath()).size;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Point the app at a different SQLite file. If nothing exists yet at the new
  * location, the current database is copied there first so no data is lost.

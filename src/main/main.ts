@@ -11,6 +11,7 @@ import {
   isUsingDefaultLocation,
   setDbPath,
   resetToDefaultDbPath,
+  getDbFileSizeBytes,
 } from './dbLocation';
 import { AccountService } from './database/accountService';
 import { AccountAliasService } from './database/accountAliasService';
@@ -429,6 +430,7 @@ function registerIPCHandlers() {
     path: getEffectiveDbPath(),
     isDefault: isUsingDefaultLocation(),
     defaultPath: getDefaultDbPath(),
+    sizeBytes: getDbFileSizeBytes(),
   }));
 
   ipcMain.handle('dbLocation:browseExisting', async () => {

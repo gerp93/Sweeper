@@ -345,9 +345,10 @@ export default function Obligations() {
         Obligations are dollars inside your HELOC spendable balance that are already spoken for — held back for
         future payments, like deferred-interest balances coming due — so they don't get swept up in everyday
         spending. An obligation has one due date and can hold several target amounts under it (say, three same-day
-        store-card purchases sharing one promo payoff date). A different date means a different obligation — use
-        Clone to spin off the next occurrence of a recurring one. When a payment is allocated to the obligation, it
-        pays down whichever target is first in line, in the order you set in Edit.
+        store-card purchases sharing one promo payoff date). A different date means a different obligation. Mark one
+        Recurring and its next occurrence appears on its own as its due date approaches — Clone is only there for a
+        manual one-off duplicate. When a payment is allocated to the obligation, it pays down whichever target is
+        first in line, in the order you set in Edit.
       </p>
 
       <div className="stat-row" style={{ marginTop: 12, marginBottom: 20 }}>
@@ -543,8 +544,9 @@ export default function Obligations() {
                 </div>
               )}
               <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
-                Recurrence doesn't create future obligations automatically — use Clone when the next one comes due.
-                A recurring obligation due more than a year out is hidden from the list until it's within a year.
+                Once this occurrence is on the books, the next one is created automatically — no need to add or
+                clone it yourself. A recurring obligation due more than a year out stays hidden from the list until
+                it's within a year.
               </p>
             </div>
 
@@ -690,6 +692,7 @@ export default function Obligations() {
             <p className="text-muted" style={{ fontSize: 13 }}>
               Creates a new obligation named "{cloneSource.label}" with the same target amounts, account, and
               recurrence, on a new due date. The original is left untouched.
+              {cloneSource.recurrence && ' Only needed for an out-of-cycle extra occurrence — a recurring one already gets its next occurrence automatically.'}
             </p>
             <div className="field">
               <label>New Due Date</label>
