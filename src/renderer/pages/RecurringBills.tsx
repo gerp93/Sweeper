@@ -17,6 +17,7 @@ export default function RecurringBills() {
   const [bills, setBills] = useState<RecurringBill[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [amountInfo, setAmountInfo] = useState<Record<string, RecurringBillAmountInfo>>({});
+  const [nextDueDates, setNextDueDates] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
   const [justAutoAdded, setJustAutoAdded] = useState<RecurringBill[]>([]);
   const [detecting, setDetecting] = useState(false);
@@ -60,11 +61,15 @@ export default function RecurringBills() {
       billList = await window.electronAPI.recurringBills.getAll();
     }
 
-    const info = await window.electronAPI.recurringBills.getAmountInfo();
+    const [info, dueDates] = await Promise.all([
+      window.electronAPI.recurringBills.getAmountInfo(),
+      window.electronAPI.recurringBills.getNextDueDates(),
+    ]);
 
     setBills(billList);
     setAccounts(accts);
     setAmountInfo(info);
+    setNextDueDates(dueDates);
     setLoading(false);
   }
 
@@ -209,7 +214,8 @@ export default function RecurringBills() {
           <ul style={{ margin: '0 0 8px', paddingLeft: 20, fontSize: 13 }}>
             {justAutoAdded.map((b) => (
               <li key={b.id}>
-                {b.label} — {formatCurrency(b.fixedAmount ?? 0)} {FREQUENCY_LABELS[b.frequency].toLowerCase()}
+                {accountName(b.accountId) ?? b.label} — {resolvedAmountDisplay(b)}{' '}
+                {FREQUENCY_LABELS[b.frequency].toLowerCase()}
               </li>
             ))}
           </ul>
@@ -238,6 +244,7 @@ export default function RecurringBills() {
                 <th>Linked Account</th>
                 <th style={{ textAlign: 'right' }}>Amount</th>
                 <th>Frequency</th>
+                <th>Due Date</th>
                 <th>Start</th>
                 <th>End</th>
                 <th>Active</th>
@@ -258,6 +265,9 @@ export default function RecurringBills() {
                     {FREQUENCY_LABELS[b.frequency]}
                     {b.frequency === 'monthly' && b.lastDayOfMonth ? ' (last day)' : ''}
                   </td>
+                  {/* Live-computed next occurrence on/after today -- Start is a fixed anchor set
+                      once at creation and goes stale, so it's not useful as "when is this due". */}
+                  <td>{nextDueDates[b.id] ? formatDate(nextDueDates[b.id]!) : '—'}</td>
                   <td>{formatDate(b.startDate)}</td>
                   <td>{b.endDate ? formatDate(b.endDate) : '—'}</td>
                   <td>{b.active ? 'Yes' : 'Paused'}</td>

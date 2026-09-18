@@ -237,6 +237,22 @@ export class RecurringBillService {
     return out;
   }
 
+  // The next occurrence date on or after today for every bill, regardless of active state --
+  // a bill's stored startDate is a fixed anchor set once at creation and drifts stale (e.g. a
+  // monthly bill created months ago still shows that original date), so the table needs this
+  // live-computed value instead to show something meaningful as "due". null if the bill's
+  // schedule has already fully lapsed (a one-time bill in the past, or endDate has passed).
+  getNextDueDates(): Record<string, string | null> {
+    const today = new Date().toISOString().slice(0, 10);
+    const farFuture = addDays(today, 400);
+    const out: Record<string, string | null> = {};
+    for (const bill of this.getAllBills()) {
+      const dates = expandOccurrences(bill, today, farFuture);
+      out[bill.id] = dates[0] ?? null;
+    }
+    return out;
+  }
+
   // Every occurrence of one bill in [windowStart, windowEnd], each carrying its resolved
   // amount at call time -- never persisted, computed fresh on every call.
   getOccurrencesInWindow(bill: RecurringBill, windowStart: string, windowEnd: string): { date: string; amount: number }[] {
@@ -244,6 +260,19 @@ export class RecurringBillService {
     const dates = expandOccurrences(bill, windowStart, windowEnd);
     const amount = this.resolvedAmount(bill);
     return dates.map((date) => ({ date, amount }));
+  }
+
+  // Bills should always be identified by their linked account, never their own stored `label`
+  // -- that field is a one-time snapshot taken at creation (or, for older bills, a raw bank
+  // statement description) that doesn't track an account rename and isn't guaranteed to match
+  // the account at all. Falls back to the label only when there's no linked account.
+  private displayName(bill: RecurringBill): string {
+    if (!bill.accountId) return bill.label;
+    const stmt = this.db.prepare(`SELECT friendly_name FROM accounts WHERE id = ?`);
+    stmt.bind([bill.accountId]);
+    const name = stmt.step() ? String(stmt.get()[0]) : null;
+    stmt.free();
+    return name ?? bill.label;
   }
 
   // A confirmed real transaction linked to this bill whose date falls within
@@ -279,7 +308,7 @@ export class RecurringBillService {
 
         out.push({
           billId: bill.id,
-          billLabel: bill.label,
+          billLabel: this.displayName(bill),
           expectedDate: occ.date,
           expectedAmount: occ.amount,
           status,
