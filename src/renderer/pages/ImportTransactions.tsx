@@ -265,8 +265,12 @@ export default function ImportTransactions() {
     }
   }
 
+  // Always identify a bill by its linked account, never its own stored label -- same reasoning
+  // as the Recurring Bills table itself.
   function billLabel(id: string): string {
-    return recurringBills.find((b) => b.id === id)?.label ?? '(unknown bill)';
+    const bill = recurringBills.find((b) => b.id === id);
+    if (!bill) return '(unknown bill)';
+    return accounts.find((a) => a.id === bill.accountId)?.friendlyName ?? bill.label;
   }
 
   function chooseBill(transactionId: string, billId: string) {

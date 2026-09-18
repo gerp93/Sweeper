@@ -114,7 +114,7 @@ export default function TransactionForm({
             <option value="">(none)</option>
             {recurringBills.map((b) => (
               <option key={b.id} value={b.id}>
-                {b.label}
+                {accounts.find((a) => a.id === b.accountId)?.friendlyName ?? b.label}
               </option>
             ))}
           </select>

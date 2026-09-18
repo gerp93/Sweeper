@@ -131,6 +131,7 @@ declare global {
         getExpectedTotal: (windowStart: string, windowEnd: string) => Promise<number>;
         findCandidateMatches: (transactionIds: string[]) => Promise<RecurringBillMatchCandidate[]>;
         getAmountInfo: () => Promise<Record<string, RecurringBillAmountInfo>>;
+        getNextDueDates: () => Promise<Record<string, string | null>>;
       };
       dbLocation: {
         get: () => Promise<{ path: string; isDefault: boolean; defaultPath: string; sizeBytes: number | null }>;
