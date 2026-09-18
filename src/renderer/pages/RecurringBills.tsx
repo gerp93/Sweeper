@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import { RecurringBill, RecurringBillAmountMode, RecurringBillOccurrence } from '../../shared/types/recurringBill';
 import { ProjectionFrequency } from '../../shared/types/projection';
 import { Account } from '../../shared/types/account';
-import { Transaction } from '../../shared/types/transaction';
 import CurrencyInput from '../components/CurrencyInput';
-import SuggestedRecurringBills from '../components/SuggestedRecurringBills';
+import { syncAutoDetectedBills, resetAutoDetection } from '../utils/autoDetectBills';
 import { formatCurrency, formatDate, todayIso, monthKey, firstDayOfMonth, lastDayOfMonth } from '../utils/format';
 
 const FREQUENCY_LABELS: Record<ProjectionFrequency, string> = {
@@ -17,9 +16,10 @@ const FREQUENCY_LABELS: Record<ProjectionFrequency, string> = {
 export default function RecurringBills() {
   const [bills, setBills] = useState<RecurringBill[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [thisMonthOccurrences, setThisMonthOccurrences] = useState<RecurringBillOccurrence[]>([]);
   const [loading, setLoading] = useState(true);
+  const [justAutoAdded, setJustAutoAdded] = useState<RecurringBill[]>([]);
+  const [detecting, setDetecting] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -43,17 +43,39 @@ export default function RecurringBills() {
   async function load() {
     setLoading(true);
     const thisMonth = monthKey(todayIso());
-    const [billList, accts, txs, occurrences] = await Promise.all([
+    let [billList, accts, txs] = await Promise.all([
       window.electronAPI.recurringBills.getAll(),
       window.electronAPI.accounts.getAll(),
       window.electronAPI.transactions.getAll(),
-      window.electronAPI.recurringBills.getMonthlyOccurrences(firstDayOfMonth(thisMonth), lastDayOfMonth(thisMonth)),
     ]);
+
+    setDetecting(true);
+    const created = await syncAutoDetectedBills(txs, billList);
+    setDetecting(false);
+    if (created.length > 0) {
+      setJustAutoAdded((prev) => [...prev, ...created]);
+      billList = await window.electronAPI.recurringBills.getAll();
+    }
+
+    const occurrences = await window.electronAPI.recurringBills.getMonthlyOccurrences(
+      firstDayOfMonth(thisMonth),
+      lastDayOfMonth(thisMonth)
+    );
+
     setBills(billList);
     setAccounts(accts);
-    setTransactions(txs);
     setThisMonthOccurrences(occurrences);
     setLoading(false);
+  }
+
+  async function rerunAutoDetection() {
+    resetAutoDetection();
+    setJustAutoAdded([]);
+    await load();
+  }
+
+  function dismissAutoAddedNotice() {
+    setJustAutoAdded([]);
   }
 
   function accountName(id: string | null) {
@@ -149,6 +171,7 @@ export default function RecurringBills() {
   async function handleDelete(id: string) {
     if (!confirm('Delete this Recurring Bill? Any transactions already confirmed against it stay, but lose the link.')) return;
     await window.electronAPI.recurringBills.delete(id);
+    setJustAutoAdded((prev) => prev.filter((b) => b.id !== id));
     await load();
   }
 
@@ -162,17 +185,48 @@ export default function RecurringBills() {
       </div>
 
       <p className="text-muted" style={{ marginTop: -8, fontSize: 13, maxWidth: 720 }}>
-        Pencil in bills you expect to pay — utilities, subscriptions, loan payments — to see a forward-looking
-        reminder in your ledger and, once confirmed against a real import, an itemized alternative to the flat
-        spending average in Projections. Nothing here is ever a real transaction until you confirm one against it.
+        Bills you expect to pay — utilities, subscriptions, loan payments — show up here two ways: added by hand
+        below, or auto-detected from a consistent, still-active pattern in your real history (last ~60 days). Either
+        way, they surface as a forward-looking reminder in your ledger and, once confirmed against a real import, an
+        itemized alternative to the flat spending average in Projections. If an auto-detected one is wrong, just
+        delete it here — it won't come back on its own.
       </p>
 
-      <SuggestedRecurringBills
-        accounts={accounts}
-        transactions={transactions}
-        recurringBills={bills}
-        onPromoted={load}
-      />
+      {detecting && (
+        <p className="text-muted" style={{ fontSize: 12 }}>
+          Checking your history for recurring patterns…
+        </p>
+      )}
+
+      {justAutoAdded.length > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="page-header" style={{ marginBottom: 8 }}>
+            <h2 style={{ fontSize: 15, margin: 0 }}>
+              Auto-added {justAutoAdded.length} recurring bill{justAutoAdded.length === 1 ? '' : 's'}
+            </h2>
+            <button className="btn" onClick={dismissAutoAddedNotice}>
+              Dismiss
+            </button>
+          </div>
+          <ul style={{ margin: '0 0 8px', paddingLeft: 20, fontSize: 13 }}>
+            {justAutoAdded.map((b) => (
+              <li key={b.id}>
+                {b.label} — {formatCurrency(b.fixedAmount ?? 0)} {FREQUENCY_LABELS[b.frequency].toLowerCase()}
+              </li>
+            ))}
+          </ul>
+          <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>
+            Wrong? Delete it in the list below — it's remembered and won't get re-added automatically.
+          </p>
+        </div>
+      )}
+
+      <div className="page-header" style={{ marginBottom: 8 }}>
+        <span />
+        <button className="btn" onClick={rerunAutoDetection} disabled={detecting}>
+          Re-scan History
+        </button>
+      </div>
 
       <div className="card" style={{ padding: 0 }}>
         {loading ? (

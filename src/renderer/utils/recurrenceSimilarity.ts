@@ -18,6 +18,9 @@ const AMOUNT_TOLERANCE_PCT = 0.15;
 // How consistent the gaps between occurrences must be (stddev, in days) to count as "recurring"
 // rather than coincidentally similar amounts landing at random times.
 const INTERVAL_TOLERANCE_DAYS = 5;
+// A cluster whose most recent member is older than this doesn't count as still active -- a
+// bill that stopped years ago shouldn't get auto-created (or suggested) as if it were current.
+const RECENCY_WINDOW_DAYS = 60;
 
 function median(nums: number[]): number {
   const sorted = [...nums].sort((a, b) => a - b);
@@ -44,13 +47,15 @@ function frequencyForInterval(days: number): ProjectionFrequency | null {
 }
 
 // Groups each account's expense history into candidate recurring bills: a run of at least
-// MIN_OCCURRENCES transactions whose amounts stay within AMOUNT_TOLERANCE_PCT of each other and
-// whose gaps land consistently on a weekly/biweekly/monthly cadence. Simpler than account-name
-// similarity clustering (accountSimilarity.ts) since there's no fuzzy string dimension --
-// amount + interval banding is enough, one pass per account.
+// MIN_OCCURRENCES transactions whose amounts stay within AMOUNT_TOLERANCE_PCT of each other,
+// whose gaps land consistently on a weekly/biweekly/monthly cadence, AND whose most recent
+// occurrence is within RECENCY_WINDOW_DAYS -- a pattern that stopped years ago doesn't count as
+// still active. Simpler than account-name similarity clustering (accountSimilarity.ts) since
+// there's no fuzzy string dimension -- amount + interval banding is enough, one pass per account.
 export function findRecurringBillCandidates(
   transactions: Transaction[],
-  existingBills: RecurringBill[]
+  existingBills: RecurringBill[],
+  today: string = new Date().toISOString().slice(0, 10)
 ): RecurringBillCandidate[] {
   const candidates: RecurringBillCandidate[] = [];
 
@@ -95,6 +100,9 @@ export function findRecurringBillCandidates(
       const mean = gaps.reduce((s, g) => s + g, 0) / gaps.length;
       const stddev = Math.sqrt(gaps.reduce((s, g) => s + (g - mean) ** 2, 0) / gaps.length);
       if (stddev > INTERVAL_TOLERANCE_DAYS) continue;
+
+      const mostRecentMember = cluster[cluster.length - 1];
+      if (daysBetween(mostRecentMember.date, today) > RECENCY_WINDOW_DAYS) continue;
 
       const medianAmount = median(cluster.map((t) => t.amount));
 

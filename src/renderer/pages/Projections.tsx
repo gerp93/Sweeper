@@ -93,6 +93,10 @@ export default function Projections() {
   const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
   const [burnMode, setBurnMode] = useState<'historical' | 'custom' | 'recurringBills'>('historical');
   const [customBurnEstimate, setCustomBurnEstimate] = useState('');
+  // Reference baseline, fetched once regardless of which mode is active -- used only to warn
+  // when "My Recurring Bills" is tracking far less than your typical historical spend (i.e.
+  // your bill list is thin/incomplete, not that your spending actually dropped that much).
+  const [historicalBurnRate, setHistoricalBurnRate] = useState<number | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -118,14 +122,16 @@ export default function Projections() {
 
   async function load() {
     setLoading(true);
-    const [list, accts, spendable] = await Promise.all([
+    const [list, accts, spendable, historicalPoint] = await Promise.all([
       window.electronAPI.projections.getAll(),
       window.electronAPI.accounts.getAll(),
       window.electronAPI.balance.getSpendable(),
+      window.electronAPI.projections.getProjectedBalance(todayIso()),
     ]);
     setProjections(list);
     setAccounts(accts);
     setTodaySpendable(spendable.balance);
+    setHistoricalBurnRate(historicalPoint.monthlyBurnRate);
     setLoading(false);
     setExcludedIds((prev) => {
       const validIds = new Set(list.map((p) => p.id));
@@ -142,10 +148,11 @@ export default function Projections() {
   ) {
     const options: ProjectionScenarioOptions = {};
     if (mode === 'custom') {
+      // Custom mode must never fall back to the historical average, even silently -- if
+      // nothing valid is typed yet, assume zero spend rather than reusing a number the user
+      // didn't ask for.
       const parsed = parseFloat(customEstimate);
-      if (!isNaN(parsed) && parsed >= 0) {
-        options.burnRateOverride = -Math.abs(parsed);
-      }
+      options.burnRateOverride = !isNaN(parsed) && parsed >= 0 ? -Math.abs(parsed) : 0;
     } else if (mode === 'recurringBills') {
       options.burnRateMode = 'recurringBills';
     }
@@ -245,6 +252,15 @@ export default function Projections() {
   const shortfallPoint = series.find((p) => p.projectedSpendableBalance < 0) ?? null;
   const parsedCustomBurn = parseFloat(customBurnEstimate);
   const hasValidCustomEstimate = burnMode === 'custom' && !isNaN(parsedCustomBurn) && parsedCustomBurn >= 0;
+
+  // "My Recurring Bills" is only as complete as the bills actually tracked -- if it's covering
+  // far less than the historical average, that's almost certainly a thin/incomplete bill list,
+  // not a real drop in spending, and the projection above will look misleadingly rosy.
+  const recurringBillsCoverageRatio =
+    burnMode === 'recurringBills' && historicalBurnRate && series.length > 0
+      ? Math.abs(series[0].monthlyBurnRate) / Math.abs(historicalBurnRate)
+      : null;
+  const recurringBillsLooksThin = recurringBillsCoverageRatio != null && recurringBillsCoverageRatio < 0.5;
 
   return (
     <div>
@@ -349,6 +365,14 @@ export default function Projections() {
                   My Recurring Bills
                 </label>
               </div>
+              {recurringBillsLooksThin && (
+                <p className="amount-negative" style={{ fontSize: 12, fontWeight: 600, margin: '4px 0 0' }}>
+                  ⚠ Your Recurring Bills only cover {formatCurrency(Math.abs(series[0]?.monthlyBurnRate ?? 0))}/mo —
+                  less than half your {formatCurrency(Math.abs(historicalBurnRate ?? 0))}/mo historical average. This
+                  almost certainly means your bill list is incomplete, not that spending actually dropped — check
+                  Recurring Bills before trusting this projection.
+                </p>
+              )}
               <p className="text-muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
                 {burnMode === 'recurringBills' ? (
                   <>Assumes the sum of your active Recurring Bills' expected occurrences each month.</>
@@ -358,7 +382,7 @@ export default function Projections() {
                     {hasValidCustomEstimate
                       ? 'your custom estimate'
                       : burnMode === 'custom'
-                        ? `enter an estimate above — showing the trailing ${BURN_LOOKBACK_MONTHS}-month average until you do`
+                        ? 'enter an estimate above — assuming $0 until you do'
                         : `trailing ${BURN_LOOKBACK_MONTHS}-month average, excluding accounts held back for an active Obligation`}
                     )
                   </>
