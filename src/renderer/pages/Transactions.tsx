@@ -7,6 +7,7 @@ import { Reconciliation } from '../../shared/types/reconciliation';
 import { HelocSettings } from '../../shared/types/helocSettings';
 import { Obligation } from '../../shared/types/obligation';
 import { RecurringBill, RecurringBillOccurrence } from '../../shared/types/recurringBill';
+import { syncAutoDetectedBills } from '../utils/autoDetectBills';
 import TransactionForm from '../components/TransactionForm';
 import MonthNavSidebar from '../components/MonthNavSidebar';
 import { useSetRightSidebar } from '../context/RightSidebarContext';
@@ -132,13 +133,20 @@ export default function Transactions() {
       window.electronAPI.obligations.getAll(),
       window.electronAPI.recurringBills.getAll(),
     ]);
+
+    // Silently create any confident, still-active recurring bill this history hasn't already
+    // been checked for -- so a pattern can show up as a ledger reminder without ever needing a
+    // visit to the Recurring Bills page first.
+    const created = await syncAutoDetectedBills(txs, billList);
+    const finalBillList = created.length > 0 ? await window.electronAPI.recurringBills.getAll() : billList;
+
     setTransactions(txs);
     setAccounts(accts);
     setReconciliations(recons);
     setHelocSettings(heloc);
     setOverallSpendable(spendable);
     setObligations(obligationList);
-    setRecurringBills(billList);
+    setRecurringBills(finalBillList);
     setLoading(false);
 
     if (currentMonth === null) {
