@@ -74,6 +74,17 @@ export interface ProjectedBalancePoint {
   projectedTrulyAvailable: number;
 }
 
+// One computed occurrence of an income projection in a given window -- never persisted,
+// computed live the same way RecurringBillOccurrence is. Used to show pencilled-in income (a
+// paycheck, a bonus) as a forward-looking reminder in the Transactions ledger, the same way a
+// Recurring Bill's expected occurrence already does for expenses.
+export interface IncomeProjectionOccurrence {
+  projectionId: string;
+  label: string;
+  expectedDate: string;
+  expectedAmount: number;
+}
+
 export interface ProjectionSeriesPoint extends ProjectedBalancePoint {
   monthLabel: string;
   // Obligation dollars whose due date falls within this calendar month specifically (not

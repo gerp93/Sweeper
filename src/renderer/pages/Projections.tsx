@@ -255,10 +255,14 @@ export default function Projections() {
 
   // "My Recurring Bills" is only as complete as the bills actually tracked -- if it's covering
   // far less than the historical average, that's almost certainly a thin/incomplete bill list,
-  // not a real drop in spending, and the projection above will look misleadingly rosy.
+  // not a real drop in spending, and the projection above will look misleadingly rosy. Compare
+  // using the first FULL future month (series[1]), not series[0] -- that's the current partial
+  // month, and dividing its truncated total by a fractional month count amplifies noise enough
+  // to hide a real shortfall in coverage.
+  const recurringBillsReferencePoint = series.length > 1 ? series[1] : series[0];
   const recurringBillsCoverageRatio =
-    burnMode === 'recurringBills' && historicalBurnRate && series.length > 0
-      ? Math.abs(series[0].monthlyBurnRate) / Math.abs(historicalBurnRate)
+    burnMode === 'recurringBills' && historicalBurnRate && recurringBillsReferencePoint
+      ? Math.abs(recurringBillsReferencePoint.monthlyBurnRate) / Math.abs(historicalBurnRate)
       : null;
   const recurringBillsLooksThin = recurringBillsCoverageRatio != null && recurringBillsCoverageRatio < 0.5;
 
@@ -367,10 +371,11 @@ export default function Projections() {
               </div>
               {recurringBillsLooksThin && (
                 <p className="amount-negative" style={{ fontSize: 12, fontWeight: 600, margin: '4px 0 0' }}>
-                  ⚠ Your Recurring Bills only cover {formatCurrency(Math.abs(series[0]?.monthlyBurnRate ?? 0))}/mo —
-                  less than half your {formatCurrency(Math.abs(historicalBurnRate ?? 0))}/mo historical average. This
-                  almost certainly means your bill list is incomplete, not that spending actually dropped — check
-                  Recurring Bills before trusting this projection.
+                  ⚠ Your Recurring Bills only cover{' '}
+                  {formatCurrency(Math.abs(recurringBillsReferencePoint?.monthlyBurnRate ?? 0))}/mo — less than half
+                  your {formatCurrency(Math.abs(historicalBurnRate ?? 0))}/mo historical average. This almost
+                  certainly means your bill list is incomplete, not that spending actually dropped — check Recurring
+                  Bills before trusting this projection.
                 </p>
               )}
               <p className="text-muted" style={{ fontSize: 12, margin: '4px 0 0' }}>

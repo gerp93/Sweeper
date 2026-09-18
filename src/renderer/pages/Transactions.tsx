@@ -7,6 +7,7 @@ import { Reconciliation } from '../../shared/types/reconciliation';
 import { HelocSettings } from '../../shared/types/helocSettings';
 import { Obligation } from '../../shared/types/obligation';
 import { RecurringBill, RecurringBillOccurrence } from '../../shared/types/recurringBill';
+import { IncomeProjection, IncomeProjectionOccurrence } from '../../shared/types/projection';
 import { syncAutoDetectedBills } from '../utils/autoDetectBills';
 import TransactionForm from '../components/TransactionForm';
 import MonthNavSidebar from '../components/MonthNavSidebar';
@@ -27,7 +28,18 @@ type ViewMode = 'month' | 'all';
 type SortKey = 'date' | 'description' | 'account' | 'amount';
 type SortDir = 'asc' | 'desc';
 
-type LedgerRow = { kind: 'real'; tx: Transaction } | { kind: 'virtual'; occurrence: RecurringBillOccurrence };
+type LedgerRow =
+  | { kind: 'real'; tx: Transaction }
+  | { kind: 'virtualBill'; occurrence: RecurringBillOccurrence }
+  | { kind: 'virtualIncome'; occurrence: IncomeProjectionOccurrence };
+
+interface PendingPrefill {
+  date: string;
+  description: string;
+  accountId: string | null;
+  amount: number;
+  recurringBillId?: string | null;
+}
 
 interface Filters {
   description: string;
@@ -69,8 +81,10 @@ export default function Transactions() {
   const [obligations, setObligations] = useState<Obligation[]>([]);
   const [recurringBills, setRecurringBills] = useState<RecurringBill[]>([]);
   const [billOccurrences, setBillOccurrences] = useState<RecurringBillOccurrence[]>([]);
+  const [incomeProjections, setIncomeProjections] = useState<IncomeProjection[]>([]);
+  const [incomeOccurrences, setIncomeOccurrences] = useState<IncomeProjectionOccurrence[]>([]);
   const [editing, setEditing] = useState<Transaction | null>(null);
-  const [prefillOccurrence, setPrefillOccurrence] = useState<RecurringBillOccurrence | null>(null);
+  const [prefill, setPrefill] = useState<PendingPrefill | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -96,14 +110,16 @@ export default function Transactions() {
   }, [currentMonth]);
 
   useEffect(() => {
-    // Only the current or a future month gets Recurring Bill reminders -- a past month should
+    // Only the current or a future month gets pencilled-in reminders -- a past month should
     // show only what actually happened.
     if (currentMonth && currentMonth >= monthKey(todayIso())) {
       loadBillOccurrences(currentMonth);
+      loadIncomeOccurrences(currentMonth);
     } else {
       setBillOccurrences([]);
+      setIncomeOccurrences([]);
     }
-  }, [currentMonth, recurringBills]);
+  }, [currentMonth, recurringBills, incomeProjections]);
 
   useEffect(() => {
     setPage(1);
@@ -124,7 +140,7 @@ export default function Transactions() {
 
   async function load() {
     setLoading(true);
-    const [txs, accts, recons, heloc, spendable, obligationList, billList] = await Promise.all([
+    const [txs, accts, recons, heloc, spendable, obligationList, billList, projectionList] = await Promise.all([
       window.electronAPI.transactions.getAll(),
       window.electronAPI.accounts.getAll(),
       window.electronAPI.reconciliations.getAll(),
@@ -132,12 +148,13 @@ export default function Transactions() {
       window.electronAPI.balance.getSpendable(),
       window.electronAPI.obligations.getAll(),
       window.electronAPI.recurringBills.getAll(),
+      window.electronAPI.projections.getAll(),
     ]);
 
     // Silently create any confident, still-active recurring bill this history hasn't already
     // been checked for -- so a pattern can show up as a ledger reminder without ever needing a
     // visit to the Recurring Bills page first.
-    const created = await syncAutoDetectedBills(txs, billList);
+    const created = await syncAutoDetectedBills(txs, billList, accts);
     const finalBillList = created.length > 0 ? await window.electronAPI.recurringBills.getAll() : billList;
 
     setTransactions(txs);
@@ -147,6 +164,7 @@ export default function Transactions() {
     setOverallSpendable(spendable);
     setObligations(obligationList);
     setRecurringBills(finalBillList);
+    setIncomeProjections(projectionList);
     setLoading(false);
 
     if (currentMonth === null) {
@@ -177,6 +195,14 @@ export default function Transactions() {
     setBillOccurrences(occurrences);
   }
 
+  async function loadIncomeOccurrences(month: string) {
+    const occurrences = await window.electronAPI.projections.getMonthlyIncomeOccurrences(
+      firstDayOfMonth(month),
+      lastDayOfMonth(month)
+    );
+    setIncomeOccurrences(occurrences);
+  }
+
   async function handleSave(input: CreateTransactionInput) {
     if (editing) {
       await window.electronAPI.transactions.update(editing.id, input);
@@ -185,14 +211,31 @@ export default function Transactions() {
     }
     setShowForm(false);
     setEditing(null);
-    setPrefillOccurrence(null);
+    setPrefill(null);
     await load();
     if (currentMonth) await loadBalances(currentMonth);
   }
 
-  function addRealTransactionFor(occurrence: RecurringBillOccurrence) {
+  function addRealTransactionForBill(occurrence: RecurringBillOccurrence) {
     setEditing(null);
-    setPrefillOccurrence(occurrence);
+    setPrefill({
+      date: occurrence.expectedDate,
+      description: occurrence.billLabel,
+      accountId: recurringBills.find((b) => b.id === occurrence.billId)?.accountId ?? null,
+      amount: occurrence.expectedAmount,
+      recurringBillId: occurrence.billId,
+    });
+    setShowForm(true);
+  }
+
+  function addRealTransactionForIncome(occurrence: IncomeProjectionOccurrence) {
+    setEditing(null);
+    setPrefill({
+      date: occurrence.expectedDate,
+      description: occurrence.label,
+      accountId: incomeProjections.find((p) => p.id === occurrence.projectionId)?.accountId ?? null,
+      amount: occurrence.expectedAmount,
+    });
     setShowForm(true);
   }
 
@@ -273,25 +316,30 @@ export default function Transactions() {
       .sort((a, b) => (a.date === b.date ? a.createdAt.localeCompare(b.createdAt) : a.date < b.date ? -1 : 1));
   }, [transactions, currentMonth]);
 
-  // A "reconciled" occurrence already has its real transaction showing in monthTransactions --
-  // showing a virtual row for it too would duplicate the line item. Only occurrences still
-  // waiting on a real transaction become virtual rows.
-  const virtualOccurrences = useMemo(
+  // A "reconciled" bill occurrence already has its real transaction showing in
+  // monthTransactions -- showing a virtual row for it too would duplicate the line item. Only
+  // occurrences still waiting on a real transaction become virtual rows. Income occurrences have
+  // no such concept (no link from a real transaction back to a specific projection), so every
+  // one returned is shown.
+  const virtualBillOccurrences = useMemo(
     () => billOccurrences.filter((o) => o.status !== 'reconciled'),
     [billOccurrences]
   );
 
   const mergedRows = useMemo(() => {
     const real: LedgerRow[] = monthTransactions.map((tx) => ({ kind: 'real', tx }));
-    const virtual: LedgerRow[] = virtualOccurrences.map((occurrence) => ({ kind: 'virtual', occurrence }));
-    return [...real, ...virtual].sort((a, b) => {
-      const dateA = a.kind === 'real' ? a.tx.date : a.occurrence.expectedDate;
-      const dateB = b.kind === 'real' ? b.tx.date : b.occurrence.expectedDate;
+    const virtualBills: LedgerRow[] = virtualBillOccurrences.map((occurrence) => ({ kind: 'virtualBill', occurrence }));
+    const virtualIncome: LedgerRow[] = incomeOccurrences.map((occurrence) => ({ kind: 'virtualIncome', occurrence }));
+    const dateOf = (row: LedgerRow) =>
+      row.kind === 'real' ? row.tx.date : row.occurrence.expectedDate;
+    return [...real, ...virtualBills, ...virtualIncome].sort((a, b) => {
+      const dateA = dateOf(a);
+      const dateB = dateOf(b);
       if (dateA !== dateB) return dateA < dateB ? -1 : 1;
       // Real rows sort ahead of a virtual row landing on the same date.
       return a.kind === 'real' ? -1 : b.kind === 'real' ? 1 : 0;
     });
-  }, [monthTransactions, virtualOccurrences]);
+  }, [monthTransactions, virtualBillOccurrences, incomeOccurrences]);
 
   const ledgerRows = useMemo(() => {
     // Only real transactions ever move the running balance -- a virtual row shows a preview
@@ -446,7 +494,7 @@ export default function Transactions() {
           className="btn btn-primary"
           onClick={() => {
             setEditing(null);
-            setPrefillOccurrence(null);
+            setPrefill(null);
             setShowForm(true);
           }}
         >
@@ -602,13 +650,13 @@ export default function Transactions() {
                     </tr>
                   ) : (
                     ledgerRows.map((row) => {
-                      if (row.kind === 'virtual') {
+                      if (row.kind === 'virtualBill') {
                         const { occurrence, balance } = row;
                         const overdue = occurrence.status === 'overdue';
                         return (
                           <tr
-                            key={`virtual-${occurrence.billId}-${occurrence.expectedDate}`}
-                            className={overdue ? 'ledger-row-overdue' : 'ledger-row-virtual'}
+                            key={`virtual-bill-${occurrence.billId}-${occurrence.expectedDate}`}
+                            className="ledger-row-projected-expense"
                           >
                             <td>{formatDate(occurrence.expectedDate)}</td>
                             <td>
@@ -617,19 +665,40 @@ export default function Transactions() {
                             <td>
                               {occurrence.billLabel} ({overdue ? `overdue — expected ${formatDate(occurrence.expectedDate)}` : 'expected'})
                             </td>
-                            <td
-                              style={{ textAlign: 'right' }}
-                              className={occurrence.expectedAmount >= 0 ? 'amount-positive' : 'amount-negative'}
-                            >
-                              {formatCurrency(occurrence.expectedAmount)}
-                            </td>
-                            <td style={{ textAlign: 'right' }} className={balance < 0 ? 'amount-negative' : undefined}>
-                              {formatCurrency(balance)}
-                            </td>
+                            <td style={{ textAlign: 'right' }}>{formatCurrency(occurrence.expectedAmount)}</td>
+                            <td style={{ textAlign: 'right' }}>{formatCurrency(balance)}</td>
                             <td>—</td>
                             <td>
                               <div className="ledger-actions">
-                                <button className="btn-link" onClick={() => addRealTransactionFor(occurrence)}>
+                                <button className="btn-link" onClick={() => addRealTransactionForBill(occurrence)}>
+                                  + Add real transaction
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      if (row.kind === 'virtualIncome') {
+                        const { occurrence, balance } = row;
+                        return (
+                          <tr
+                            key={`virtual-income-${occurrence.projectionId}-${occurrence.expectedDate}`}
+                            className="ledger-row-projected-income"
+                          >
+                            <td>{formatDate(occurrence.expectedDate)}</td>
+                            <td>
+                              {accountName(
+                                incomeProjections.find((p) => p.id === occurrence.projectionId)?.accountId ?? null
+                              )}
+                            </td>
+                            <td>{occurrence.label} (expected)</td>
+                            <td style={{ textAlign: 'right' }}>{formatCurrency(occurrence.expectedAmount)}</td>
+                            <td style={{ textAlign: 'right' }}>{formatCurrency(balance)}</td>
+                            <td>—</td>
+                            <td>
+                              <div className="ledger-actions">
+                                <button className="btn-link" onClick={() => addRealTransactionForIncome(occurrence)}>
                                   + Add real transaction
                                 </button>
                               </div>
@@ -660,7 +729,7 @@ export default function Transactions() {
                                 className="btn-link"
                                 onClick={() => {
                                   setEditing(tx);
-                                  setPrefillOccurrence(null);
+                                  setPrefill(null);
                                   setShowForm(true);
                                 }}
                               >
@@ -802,14 +871,14 @@ export default function Transactions() {
           accounts={accounts}
           obligations={obligations}
           recurringBills={recurringBills}
-          defaultDate={editing ? undefined : prefillOccurrence?.expectedDate ?? newTransactionDate}
+          defaultDate={editing ? undefined : prefill?.date ?? newTransactionDate}
           defaultValues={
-            prefillOccurrence
+            prefill
               ? {
-                  description: prefillOccurrence.billLabel,
-                  accountId: recurringBills.find((b) => b.id === prefillOccurrence.billId)?.accountId ?? null,
-                  amount: prefillOccurrence.expectedAmount,
-                  recurringBillId: prefillOccurrence.billId,
+                  description: prefill.description,
+                  accountId: prefill.accountId,
+                  amount: prefill.amount,
+                  recurringBillId: prefill.recurringBillId,
                 }
               : undefined
           }
@@ -817,7 +886,7 @@ export default function Transactions() {
           onCancel={() => {
             setShowForm(false);
             setEditing(null);
-            setPrefillOccurrence(null);
+            setPrefill(null);
           }}
         />
       )}

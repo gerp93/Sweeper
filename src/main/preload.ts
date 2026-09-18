@@ -106,6 +106,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('projections:getProjectedBalance', targetDate, excludedIds, options),
     getSeries: (months: number, excludedIds?: string[], options?: ProjectionScenarioOptions) =>
       ipcRenderer.invoke('projections:getSeries', months, excludedIds, options),
+    getMonthlyIncomeOccurrences: (monthStart: string, monthEnd: string, excludedIds?: string[]) =>
+      ipcRenderer.invoke('projections:getMonthlyIncomeOccurrences', monthStart, monthEnd, excludedIds),
   },
 
   recurringBills: {
