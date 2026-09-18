@@ -568,7 +568,6 @@ export default function Transactions() {
                 <thead>
                   <tr>
                     <th>Date</th>
-                    <th>Description</th>
                     <th>Account</th>
                     <th>Memo</th>
                     <th style={{ textAlign: 'right' }}>Amount</th>
@@ -579,7 +578,7 @@ export default function Transactions() {
                 </thead>
                 <tbody>
                   <tr className="ledger-marker">
-                    <td colSpan={5}>Beginning of month</td>
+                    <td colSpan={4}>Beginning of month</td>
                     <td style={{ textAlign: 'right' }} className={bom && bom.balance < 0 ? 'amount-negative' : undefined}>
                       {bom && formatCurrency(bom.balance)}
                     </td>
@@ -589,7 +588,7 @@ export default function Transactions() {
 
                   {ledgerRows.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="empty-state">
+                      <td colSpan={7} className="empty-state">
                         No transactions this month.
                       </td>
                     </tr>
@@ -605,12 +604,11 @@ export default function Transactions() {
                           >
                             <td>{formatDate(occurrence.expectedDate)}</td>
                             <td>
-                              {occurrence.billLabel} ({overdue ? `overdue — expected ${formatDate(occurrence.expectedDate)}` : 'expected'})
-                            </td>
-                            <td>
                               {accountName(recurringBills.find((b) => b.id === occurrence.billId)?.accountId ?? null)}
                             </td>
-                            <td></td>
+                            <td>
+                              {occurrence.billLabel} ({overdue ? `overdue — expected ${formatDate(occurrence.expectedDate)}` : 'expected'})
+                            </td>
                             <td
                               style={{ textAlign: 'right' }}
                               className={occurrence.expectedAmount >= 0 ? 'amount-positive' : 'amount-negative'}
@@ -636,7 +634,6 @@ export default function Transactions() {
                       return (
                         <tr key={tx.id}>
                           <td>{formatDate(tx.date)}</td>
-                          <td>{tx.description}</td>
                           <td>{accountName(tx.accountId)}</td>
                           <td>{renderMemoInput(tx)}</td>
                           <td
@@ -672,7 +669,7 @@ export default function Transactions() {
                   )}
 
                   <tr className="ledger-marker">
-                    <td colSpan={5}>End of month</td>
+                    <td colSpan={4}>End of month</td>
                     <td style={{ textAlign: 'right' }} className={eom && eom.balance < 0 ? 'amount-negative' : undefined}>
                       {eom && formatCurrency(eom.balance)}
                     </td>
