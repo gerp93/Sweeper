@@ -61,6 +61,10 @@ const AUTO_AVERAGE_LOOKBACK = 6;
 // Reconciliation window: a real transaction dated within this many days of an occurrence's
 // expected date counts as satisfying it (banks post a few days early/late).
 const RECONCILE_WINDOW_DAYS = 10;
+// How far before an occurrence's expected date an early payment can land and still cover it
+// (see findCoveringPayment) -- roughly a card's statement-to-due-date gap.
+const EARLY_PAYMENT_WINDOW_DAYS = 14;
+const daysBetweenIso = (a: string, b: string) => (Date.parse(a) - Date.parse(b)) / 86_400_000;
 // Import-matching window: wider than the reconciliation window since we're searching from the
 // transaction's date outward for a plausible nearby occurrence, not the other way around.
 const MATCH_WINDOW_DAYS = 15;
@@ -289,6 +293,42 @@ export class RecurringBillService {
     return row;
   }
 
+  // A payment that was made early and covers the occurrence outright -- e.g. a credit card
+  // paid off on the 9th for a bill expected on the 20th, in an amount the projection's
+  // estimate never anticipated. It never got linked to the bill (an amount that far past the
+  // estimate isn't offered as an import candidate) and sits outside RECONCILE_WINDOW_DAYS, so
+  // findConfirmedMatch can't see it. Any unlinked (or same-bill) expense on the bill's account
+  // that is at least the expected amount counts, provided this occurrence is the bill's nearest
+  // one to the payment -- so one payment can't quietly satisfy two occurrences. Only meaningful
+  // for expense bills; an expected amount of 0 (no history yet) never matches.
+  private findCoveringPayment(bill: RecurringBill, expectedDate: string, expectedAmount: number): { id: string } | null {
+    if (!bill.accountId || expectedAmount >= 0) return null;
+
+    const stmt = this.db.prepare(
+      `SELECT id, date FROM transactions
+       WHERE account_id = ? AND amount <= ? AND (recurring_bill_id IS NULL OR recurring_bill_id = ?)
+       AND date BETWEEN date(?, '-${EARLY_PAYMENT_WINDOW_DAYS} days') AND date(?, '+${RECONCILE_WINDOW_DAYS} days')
+       ORDER BY ABS(julianday(date) - julianday(?)) ASC`
+    );
+    stmt.bind([bill.accountId, expectedAmount, bill.id, expectedDate, expectedDate, expectedDate]);
+    const candidates: { id: string; date: string }[] = [];
+    while (stmt.step()) {
+      const [id, date] = stmt.get();
+      candidates.push({ id: String(id), date: String(date) });
+    }
+    stmt.free();
+
+    for (const c of candidates) {
+      const distance = (d: string) => Math.abs(daysBetweenIso(c.date, d));
+      const nearest = expandOccurrences(bill, addDays(c.date, -45), addDays(c.date, 45)).reduce(
+        (best, d) => (distance(d) < distance(best) ? d : best),
+        expectedDate
+      );
+      if (nearest === expectedDate) return { id: c.id };
+    }
+    return null;
+  }
+
   // Live reconciliation state for the ledger: every active bill's occurrences in the given
   // month, each tagged upcoming / reconciled / overdue. Consumed by the Transactions ledger
   // merge (only upcoming/overdue become virtual rows -- reconciled ones already show as their
@@ -301,7 +341,8 @@ export class RecurringBillService {
     for (const bill of bills) {
       const occurrences = this.getOccurrencesInWindow(bill, monthStart, monthEnd);
       for (const occ of occurrences) {
-        const matched = this.findConfirmedMatch(bill.id, occ.date);
+        const matched =
+          this.findConfirmedMatch(bill.id, occ.date) ?? this.findCoveringPayment(bill, occ.date, occ.amount);
         let status: BillOccurrenceStatus;
         if (matched) status = 'reconciled';
         else status = occ.date < today ? 'overdue' : 'upcoming';
