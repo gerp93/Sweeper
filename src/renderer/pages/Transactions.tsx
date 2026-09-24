@@ -92,6 +92,96 @@ const MEMO_INPUT_STYLE: CSSProperties = {
   fontSize: 13,
 };
 
+interface SpendPoint {
+  day: number;
+  actual: number;
+  projected: number;
+}
+
+// A cumulative "burn-up" of spending across the days of the month: dollars actually spent so far
+// (solid line) versus that same total plus still-outstanding bills once they land (dashed line).
+// Deliberately spend-only -- income and the starting balance already have their own charts above
+// this one, and mixing them in here would turn "how fast am I spending" back into a balance chart.
+function SpendingBurnUpChart({
+  points,
+  todayDay,
+  showProjected,
+}: {
+  points: SpendPoint[];
+  todayDay: number | null;
+  showProjected: boolean;
+}) {
+  const height = 160;
+  const paddingTop = 16;
+  const paddingBottom = 22;
+  const paddingX = 6;
+  const plotHeight = height - paddingTop - paddingBottom;
+  const width = Math.max(360, points.length * 18);
+  const plotWidth = width - paddingX * 2;
+
+  const maxVal = Math.max(...points.map((p) => Math.max(p.actual, p.projected)), 1);
+  const lastDay = points.length > 0 ? points[points.length - 1].day : 1;
+  const xFor = (day: number) => paddingX + ((day - 1) / Math.max(1, lastDay - 1)) * plotWidth;
+  const yFor = (v: number) => paddingTop + plotHeight - (v / maxVal) * plotHeight;
+
+  const pathFor = (key: 'actual' | 'projected') =>
+    points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xFor(p.day).toFixed(1)} ${yFor(p[key]).toFixed(1)}`).join(' ');
+
+  const last = points[points.length - 1];
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height, display: 'block' }}>
+      <line x1={paddingX} y1={yFor(0)} x2={width - paddingX} y2={yFor(0)} stroke="var(--color-border)" strokeWidth={1} />
+      {todayDay != null && (
+        <line
+          x1={xFor(todayDay)}
+          y1={paddingTop}
+          x2={xFor(todayDay)}
+          y2={yFor(0)}
+          stroke="var(--color-border)"
+          strokeWidth={1}
+          strokeDasharray="2 3"
+        />
+      )}
+      {showProjected && (
+        <path d={pathFor('projected')} fill="none" stroke="var(--color-accent-red)" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.6} />
+      )}
+      <path d={pathFor('actual')} fill="none" stroke="var(--color-accent-red)" strokeWidth={2} />
+      <text x={xFor(points[0]?.day ?? 1)} y={height - 6} fontSize={10} fill="var(--color-accent-blue)">
+        Day {points[0]?.day ?? 1}
+      </text>
+      <text x={xFor(lastDay)} y={height - 6} textAnchor="end" fontSize={10} fill="var(--color-accent-blue)">
+        Day {lastDay}
+      </text>
+      {last && (
+        <text
+          x={width - paddingX}
+          y={Math.max(paddingTop + 8, yFor(last.actual) - 6)}
+          textAnchor="end"
+          fontSize={10}
+          fontWeight={600}
+          fill="var(--color-accent-red)"
+        >
+          {formatCurrency(last.actual)}
+        </text>
+      )}
+      {showProjected && last && Math.round(last.projected * 100) !== Math.round(last.actual * 100) && (
+        <text
+          x={width - paddingX}
+          y={Math.min(height - paddingBottom - 4, yFor(last.projected) + 12)}
+          textAnchor="end"
+          fontSize={10}
+          fontWeight={600}
+          fill="var(--color-accent-red)"
+          opacity={0.7}
+        >
+          {formatCurrency(last.projected)} projected
+        </text>
+      )}
+    </svg>
+  );
+}
+
 export default function Transactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -424,6 +514,36 @@ export default function Transactions() {
   // projectedRunning), surfaced next to "End of month" too so the two don't visually disagree.
   const projectedEomBalance = ledgerRows.length > 0 ? ledgerRows[ledgerRows.length - 1].balance : null;
 
+  // Cumulative spending (expenses only, income excluded) for each day of the currently-viewed
+  // month, for the burn-up chart below the ledger. `actual` only ever grows on days with a real
+  // transaction; `projected` also folds in still-outstanding bill occurrences, so a future month
+  // (or the rest of the current one) shows where spending is headed even before it posts.
+  const spendingSeries = useMemo<SpendPoint[]>(() => {
+    if (!currentMonth) return [];
+    const first = firstDayOfMonth(currentMonth);
+    const last = lastDayOfMonth(currentMonth);
+    const totalDays = daysBetween(first, last) + 1;
+    let actual = 0;
+    let projected = 0;
+    const points: SpendPoint[] = [];
+    for (let i = 0; i < totalDays; i++) {
+      const dateIso = addDaysIso(first, i);
+      const realSpend = monthTransactions
+        .filter((t) => t.date === dateIso && t.amount < 0)
+        .reduce((s, t) => s - t.amount, 0);
+      const virtualSpend = virtualBillOccurrences
+        .filter((o) => o.expectedDate === dateIso)
+        .reduce((s, o) => s - o.expectedAmount, 0);
+      actual += realSpend;
+      projected += realSpend + virtualSpend;
+      points.push({ day: i + 1, actual, projected });
+    }
+    return points;
+  }, [currentMonth, monthTransactions, virtualBillOccurrences]);
+
+  const todaySpendDay =
+    currentMonth && monthKey(todayIso()) === currentMonth ? daysBetween(firstDayOfMonth(currentMonth), todayIso()) + 1 : null;
+
   function goToMonth(delta: number) {
     if (!currentMonth) return;
     setCurrentMonth(shiftMonthKey(currentMonth, delta));
@@ -696,6 +816,7 @@ export default function Transactions() {
         !currentMonth ? (
           <div className="empty-state">Loading…</div>
         ) : (
+          <>
           <div className="card" style={{ padding: 0 }}>
             <div className="ledger-nav">
               <button className="btn" onClick={() => goToMonth(-1)}>
@@ -703,18 +824,17 @@ export default function Transactions() {
               </button>
               <div className="ledger-nav-title">
                 <div style={{ fontWeight: 600, fontSize: 16 }}>{monthLabel(currentMonth)}</div>
-                {!balancesLoading && (
-                  <div className={netCashFlow >= 0 ? 'amount-positive' : 'amount-negative'} style={{ fontSize: 13 }}>
-                    Net cash flow: {formatCurrency(netCashFlow)}
-                  </div>
-                )}
-                {!balancesLoading && projectedNetCashFlow !== null && (
-                  <div
-                    className={projectedNetCashFlow >= 0 ? 'amount-positive' : 'amount-negative'}
-                    style={{ fontSize: 12, opacity: 0.8 }}
-                  >
+                {!balancesLoading && isCurrentOrFutureMonth && projectedNetCashFlow !== null ? (
+                  <div className={projectedNetCashFlow >= 0 ? 'amount-positive' : 'amount-negative'} style={{ fontSize: 13 }}>
                     Projected: {formatCurrency(projectedNetCashFlow)}
                   </div>
+                ) : (
+                  !balancesLoading &&
+                  !isCurrentOrFutureMonth && (
+                    <div className={netCashFlow >= 0 ? 'amount-positive' : 'amount-negative'} style={{ fontSize: 13 }}>
+                      Net cash flow: {formatCurrency(netCashFlow)}
+                    </div>
+                  )
                 )}
               </div>
               <button className="btn" onClick={() => goToMonth(1)}>
@@ -872,19 +992,18 @@ export default function Transactions() {
 
                   <tr className="ledger-marker">
                     <td colSpan={4}>End of month</td>
-                    <td style={{ textAlign: 'right' }} className={eom && eom.balance < 0 ? 'amount-negative' : undefined}>
-                      {eom && formatCurrency(eom.balance)}
-                      {projectedEomBalance !== null &&
-                        eom &&
-                        Math.round(projectedEomBalance * 100) !== Math.round(eom.balance * 100) && (
-                          <div
-                            className={projectedEomBalance >= 0 ? 'amount-positive' : 'amount-negative'}
-                            style={{ fontSize: 11, fontWeight: 400, opacity: 0.8 }}
-                          >
-                            Projected: {formatCurrency(projectedEomBalance)}
-                          </div>
-                        )}
-                    </td>
+                    {isCurrentOrFutureMonth ? (
+                      <td
+                        style={{ textAlign: 'right' }}
+                        className={projectedEomBalance !== null && projectedEomBalance < 0 ? 'amount-negative' : undefined}
+                      >
+                        {projectedEomBalance !== null && `Projected: ${formatCurrency(projectedEomBalance)}`}
+                      </td>
+                    ) : (
+                      <td style={{ textAlign: 'right' }} className={eom && eom.balance < 0 ? 'amount-negative' : undefined}>
+                        {eom && formatCurrency(eom.balance)}
+                      </td>
+                    )}
                     <td></td>
                     <td></td>
                   </tr>
@@ -893,21 +1012,32 @@ export default function Transactions() {
             )}
 
             <div className="ledger-nav ledger-nav-bottom">
-              {!balancesLoading && (
-                <div className={netCashFlow >= 0 ? 'amount-positive' : 'amount-negative'}>
-                  Net cash flow: {formatCurrency(netCashFlow)}
-                </div>
-              )}
-              {!balancesLoading && projectedNetCashFlow !== null && (
-                <div
-                  className={projectedNetCashFlow >= 0 ? 'amount-positive' : 'amount-negative'}
-                  style={{ fontSize: 13, opacity: 0.8 }}
-                >
+              {!balancesLoading && isCurrentOrFutureMonth && projectedNetCashFlow !== null ? (
+                <div className={projectedNetCashFlow >= 0 ? 'amount-positive' : 'amount-negative'}>
                   Projected (incl. upcoming bills/income): {formatCurrency(projectedNetCashFlow)}
                 </div>
+              ) : (
+                !balancesLoading &&
+                !isCurrentOrFutureMonth && (
+                  <div className={netCashFlow >= 0 ? 'amount-positive' : 'amount-negative'}>
+                    Net cash flow: {formatCurrency(netCashFlow)}
+                  </div>
+                )
               )}
             </div>
           </div>
+
+          {hasAnchor && spendingSeries.length > 0 && (
+            <div className="card" style={{ padding: 0, marginTop: 16 }}>
+              <div style={{ padding: '16px 16px 0' }}>
+                <h2 style={{ fontSize: 15, margin: 0 }}>Spending This Month</h2>
+              </div>
+              <div style={{ padding: '4px 16px 16px' }}>
+                <SpendingBurnUpChart points={spendingSeries} todayDay={todaySpendDay} showProjected={isCurrentOrFutureMonth} />
+              </div>
+            </div>
+          )}
+          </>
         )
       ) : (
         <div className="card" style={{ padding: 0 }}>
