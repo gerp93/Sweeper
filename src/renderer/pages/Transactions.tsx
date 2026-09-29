@@ -1037,6 +1037,17 @@ export default function Transactions() {
               </div>
             </div>
           )}
+
+          <div className="card" style={{ padding: 0, marginTop: 16 }}>
+            <div className="ledger-nav" style={{ borderBottom: 'none' }}>
+              <button className="btn" onClick={() => goToMonth(-1)}>
+                ‹ Prev
+              </button>
+              <button className="btn" onClick={() => goToMonth(1)}>
+                Next ›
+              </button>
+            </div>
+          </div>
           </>
         )
       ) : (
