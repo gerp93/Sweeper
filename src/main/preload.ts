@@ -117,6 +117,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     delete: (id: string) => ipcRenderer.invoke('recurringBills:delete', id),
     getMonthlyOccurrences: (monthStart: string, monthEnd: string) =>
       ipcRenderer.invoke('recurringBills:getMonthlyOccurrences', monthStart, monthEnd),
+    dismissOccurrence: (billId: string, expectedDate: string) =>
+      ipcRenderer.invoke('recurringBills:dismissOccurrence', billId, expectedDate),
     getExpectedTotal: (windowStart: string, windowEnd: string) =>
       ipcRenderer.invoke('recurringBills:getExpectedTotal', windowStart, windowEnd),
     findCandidateMatches: (transactionIds: string[]) =>

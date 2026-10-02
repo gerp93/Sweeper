@@ -128,6 +128,7 @@ declare global {
         update: (id: string, input: UpdateRecurringBillInput) => Promise<RecurringBill>;
         delete: (id: string) => Promise<{ success: boolean }>;
         getMonthlyOccurrences: (monthStart: string, monthEnd: string) => Promise<RecurringBillOccurrence[]>;
+        dismissOccurrence: (billId: string, expectedDate: string) => Promise<{ success: boolean }>;
         getExpectedTotal: (windowStart: string, windowEnd: string) => Promise<number>;
         findCandidateMatches: (transactionIds: string[]) => Promise<RecurringBillMatchCandidate[]>;
         getAmountInfo: () => Promise<Record<string, RecurringBillAmountInfo>>;
