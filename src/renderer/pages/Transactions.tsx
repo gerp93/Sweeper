@@ -269,6 +269,15 @@ export default function Transactions() {
     setShowForm(true);
   }
 
+  async function dismissBillOccurrence(occurrence: RecurringBillOccurrence) {
+    if (!confirm(`Remove the pencilled-in "${occurrence.billLabel}" for ${formatDate(occurrence.expectedDate)}? The bill itself and its other dates are unaffected.`)) {
+      return;
+    }
+    await window.electronAPI.recurringBills.dismissOccurrence(occurrence.billId, occurrence.expectedDate);
+    if (currentMonth) await loadBillOccurrences(currentMonth);
+    await loadUrgentBillOccurrences();
+  }
+
   function addRealTransactionForIncome(occurrence: IncomeProjectionOccurrence) {
     setEditing(null);
     setPrefill({
@@ -548,6 +557,9 @@ export default function Transactions() {
                       ) —{' '}
                       <button className="btn-link" onClick={() => addRealTransactionForBill(o)}>
                         + Add real transaction
+                      </button>{' '}
+                      <button className="btn-link" onClick={() => dismissBillOccurrence(o)}>
+                        Dismiss
                       </button>
                     </li>
                   ))}
@@ -791,6 +803,9 @@ export default function Transactions() {
                               <div className="ledger-actions">
                                 <button className="btn-link" onClick={() => addRealTransactionForBill(occurrence)}>
                                   + Add real transaction
+                                </button>
+                                <button className="btn-link" onClick={() => dismissBillOccurrence(occurrence)}>
+                                  Dismiss
                                 </button>
                               </div>
                             </td>

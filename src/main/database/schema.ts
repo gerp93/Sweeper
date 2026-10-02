@@ -444,6 +444,17 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
     )
   `);
 
+  // A single occurrence of a recurring bill the user chose to skip ("this one isn't happening")
+  // without touching the bill's schedule -- hidden from the ledger and the forecast.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS dismissed_bill_occurrences (
+      bill_id TEXT NOT NULL,
+      expected_date TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (bill_id, expected_date)
+    )
+  `);
+
   // Migration: recurring bill confirmation was added after transactions already shipped --
   // add the link column to databases created before this change. Same pattern as
   // obligation_id below: SQLite can't add a FK constraint retroactively via ALTER TABLE, so

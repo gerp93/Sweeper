@@ -423,6 +423,10 @@ function registerIPCHandlers() {
   ipcMain.handle('recurringBills:getMonthlyOccurrences', (_, monthStart: string, monthEnd: string) =>
     recurringBillService.getMonthlyBillOccurrences(monthStart, monthEnd)
   );
+  ipcMain.handle('recurringBills:dismissOccurrence', (_, billId: string, expectedDate: string) => {
+    recurringBillService.dismissOccurrence(billId, expectedDate);
+    return { success: true };
+  });
   ipcMain.handle('recurringBills:getExpectedTotal', (_, windowStart: string, windowEnd: string) =>
     recurringBillService.getExpectedBillTotal(windowStart, windowEnd)
   );

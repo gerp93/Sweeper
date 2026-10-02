@@ -187,8 +187,28 @@ export class RecurringBillService {
     // CREATE TABLE) -- null it out explicitly first so linked transactions don't end up
     // pointing at a deleted bill.
     this.db.run(`UPDATE transactions SET recurring_bill_id = NULL WHERE recurring_bill_id = ?`, [id]);
+    this.db.run(`DELETE FROM dismissed_bill_occurrences WHERE bill_id = ?`, [id]);
     this.db.run(`DELETE FROM recurring_bills WHERE id = ?`, [id]);
     saveDatabase(this.db);
+  }
+
+  // Skip a single pencilled-in occurrence (e.g. the bill was paid some way the app can't see, or
+  // just isn't happening this cycle) without deleting or editing the bill itself.
+  dismissOccurrence(billId: string, expectedDate: string): void {
+    this.db.run(
+      `INSERT OR IGNORE INTO dismissed_bill_occurrences (bill_id, expected_date, created_at) VALUES (?, ?, ?)`,
+      [billId, expectedDate, new Date().toISOString()]
+    );
+    saveDatabase(this.db);
+  }
+
+  private dismissedDates(billId: string): Set<string> {
+    const stmt = this.db.prepare(`SELECT expected_date FROM dismissed_bill_occurrences WHERE bill_id = ?`);
+    stmt.bind([billId]);
+    const dates = new Set<string>();
+    while (stmt.step()) dates.add(String(stmt.get()[0]));
+    stmt.free();
+    return dates;
   }
 
   // Fixed bills just report their set amount. Auto-average bills average the linked account's
@@ -261,7 +281,8 @@ export class RecurringBillService {
   // amount at call time -- never persisted, computed fresh on every call.
   getOccurrencesInWindow(bill: RecurringBill, windowStart: string, windowEnd: string): { date: string; amount: number }[] {
     if (!bill.active) return [];
-    const dates = expandOccurrences(bill, windowStart, windowEnd);
+    const dismissed = this.dismissedDates(bill.id);
+    const dates = expandOccurrences(bill, windowStart, windowEnd).filter((d) => !dismissed.has(d));
     const amount = this.resolvedAmount(bill);
     return dates.map((date) => ({ date, amount }));
   }
@@ -304,13 +325,16 @@ export class RecurringBillService {
   private findCoveringPayment(bill: RecurringBill, expectedDate: string, expectedAmount: number): { id: string } | null {
     if (!bill.accountId || expectedAmount >= 0) return null;
 
+    // An auto-average amount is only an estimate (a card payment can land well under it), so any
+    // expense on the account counts; a fixed bill must be paid in full.
+    const maxAmount = bill.amountMode === 'auto-average' ? 0 : expectedAmount;
     const stmt = this.db.prepare(
       `SELECT id, date FROM transactions
-       WHERE account_id = ? AND amount <= ? AND (recurring_bill_id IS NULL OR recurring_bill_id = ?)
+       WHERE account_id = ? AND amount < 0 AND amount <= ? AND (recurring_bill_id IS NULL OR recurring_bill_id = ?)
        AND date BETWEEN date(?, '-${EARLY_PAYMENT_WINDOW_DAYS} days') AND date(?, '+${RECONCILE_WINDOW_DAYS} days')
        ORDER BY ABS(julianday(date) - julianday(?)) ASC`
     );
-    stmt.bind([bill.accountId, expectedAmount, bill.id, expectedDate, expectedDate, expectedDate]);
+    stmt.bind([bill.accountId, maxAmount, bill.id, expectedDate, expectedDate, expectedDate]);
     const candidates: { id: string; date: string }[] = [];
     while (stmt.step()) {
       const [id, date] = stmt.get();
@@ -392,10 +416,9 @@ export class RecurringBillService {
         const occurrences = expandOccurrences(bill, windowStart, windowEnd);
         if (occurrences.length === 0) continue;
 
-        const hasHistory = this.hasConfirmedHistory(bill.id);
-        if (bill.amountMode === 'auto-average' && !hasHistory) {
-          // Nothing to compare against yet -- let the first confirmation establish the
-          // pattern instead of refusing to match for lack of a baseline.
+        if (bill.amountMode === 'auto-average') {
+          // The amount is just a running estimate (a card payment can differ a lot from the
+          // average), so the account + date proximity is the signal -- no amount comparison.
           candidateBillIds.push(bill.id);
           continue;
         }
