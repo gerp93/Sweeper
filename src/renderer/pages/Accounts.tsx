@@ -13,6 +13,7 @@ export default function Accounts() {
   const [aliases, setAliases] = useState<AccountAlias[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [editing, setEditing] = useState<Account | null>(null);
+  const [adding, setAdding] = useState(false);
   const [merging, setMerging] = useState<Account | null>(null);
   const [managingAliasesFor, setManagingAliasesFor] = useState<Account | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,6 +61,21 @@ export default function Accounts() {
     setEditing(null);
     await load();
     flash(id);
+  }
+
+  async function handleCreate(friendlyName: string) {
+    let created: Account;
+    try {
+      created = await window.electronAPI.accounts.create({ friendlyName });
+    } catch (err: any) {
+      alert(`Couldn't add account: ${String(err?.message ?? err)}`);
+      return;
+    }
+    setAdding(false);
+    await load();
+    flash(created.id);
+    // A new account has no aliases yet, so nothing would match it on import -- go straight to adding one.
+    setManagingAliasesFor(created);
   }
 
   async function handleDelete(id: string) {
@@ -137,6 +153,9 @@ export default function Accounts() {
         <h1>
           Accounts <span className="text-muted" style={{ fontSize: 15, fontWeight: 400 }}>({accounts.length})</span>
         </h1>
+        <button className="btn btn-primary" onClick={() => setAdding(true)}>
+          + Add Account
+        </button>
       </div>
 
       <div className="tab-bar">
@@ -166,7 +185,9 @@ export default function Accounts() {
           {loading ? (
             <div className="empty-state">Loading…</div>
           ) : accounts.length === 0 ? (
-            <div className="empty-state">No accounts yet. They'll appear as you import transactions.</div>
+            <div className="empty-state">
+              No accounts yet. Add one above, or they'll appear as you import transactions.
+            </div>
           ) : (
             <table className="data-table">
               <thead>
@@ -275,6 +296,7 @@ export default function Accounts() {
         </div>
       )}
 
+      {adding && <AccountForm onSave={handleCreate} onCancel={() => setAdding(false)} />}
       {editing && <AccountForm account={editing} onSave={handleSave} onCancel={() => setEditing(null)} />}
       {merging && (
         <MergeAccountForm
