@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, MenuItem, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -45,6 +45,9 @@ import { Database } from 'sql.js';
 pinUserDataPath();
 app.setName('sweeper');
 
+const REPO_URL = 'https://github.com/gerp93/Sweeper';
+const ISSUES_URL = `${REPO_URL}/issues`;
+
 // Guards against a real race: if a second launch attempt's 'second-instance'
 // event lands while this process is still awaiting initDatabase() (loading
 // the sql.js WASM engine takes a moment), the handler below would see
@@ -90,6 +93,108 @@ let obligationService: ObligationService;
 let projectionService: ProjectionService;
 let recurringBillService: RecurringBillService;
 
+// Replaces Electron's default File/Edit/Window/Help menu bar with a minimal
+// View + Help (plus the macOS app-name menu), per KVG_Standards'
+// electron-menu.md. Dev-only items stay gated behind !app.isPackaged, and
+// dropping the Edit menu is offset by attachContextMenu's right-click
+// cut/copy/paste/select-all below.
+function setupApplicationMenu(): void {
+  const isMac = process.platform === 'darwin';
+
+  const viewMenu: Electron.MenuItemConstructorOptions = {
+    label: 'View',
+    submenu: [
+      ...(!app.isPackaged
+        ? [
+            { role: 'reload' as const },
+            { role: 'forceReload' as const },
+            { role: 'toggleDevTools' as const },
+            { type: 'separator' as const },
+          ]
+        : []),
+      { role: 'resetZoom' as const },
+      { role: 'zoomIn' as const },
+      { role: 'zoomOut' as const },
+      { type: 'separator' as const },
+      { role: 'togglefullscreen' as const },
+    ],
+  };
+
+  const helpMenu: Electron.MenuItemConstructorOptions = {
+    label: 'Help',
+    role: 'help',
+    submenu: [
+      {
+        label: 'GitHub Repository',
+        click: () => shell.openExternal(REPO_URL),
+      },
+      {
+        label: 'Report an Issue',
+        click: () => shell.openExternal(ISSUES_URL),
+      },
+      { type: 'separator' as const },
+      {
+        label: `Version ${app.getVersion()}`,
+        enabled: false,
+      },
+    ],
+  };
+
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(isMac
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: 'about' as const },
+              { type: 'separator' as const },
+              { role: 'services' as const },
+              { type: 'separator' as const },
+              { role: 'hide' as const },
+              { role: 'hideOthers' as const },
+              { role: 'unhide' as const },
+              { type: 'separator' as const },
+              { role: 'quit' as const },
+            ],
+          },
+        ]
+      : []),
+    viewMenu,
+    helpMenu,
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// Right-click cut/copy/paste/select-all, since setupApplicationMenu() above
+// drops the stock Edit menu that would otherwise provide those actions/
+// accelerators.
+function attachContextMenu(win: BrowserWindow): void {
+  win.webContents.on('context-menu', (_event, params) => {
+    const menu = new Menu();
+
+    if (params.isEditable) {
+      if (params.editFlags.canCut) {
+        menu.append(new MenuItem({ role: 'cut' }));
+      }
+      if (params.editFlags.canCopy) {
+        menu.append(new MenuItem({ role: 'copy' }));
+      }
+      if (params.editFlags.canPaste) {
+        menu.append(new MenuItem({ role: 'paste' }));
+      }
+      if (params.editFlags.canSelectAll) {
+        menu.append(new MenuItem({ role: 'selectAll' }));
+      }
+    } else if (params.selectionText) {
+      menu.append(new MenuItem({ role: 'copy' }));
+    }
+
+    if (menu.items.length === 0) return;
+    menu.popup({ window: win });
+  });
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1300,
@@ -105,6 +210,8 @@ function createWindow() {
     titleBarStyle: 'default',
     backgroundColor: '#f5f5f5',
   });
+
+  attachContextMenu(mainWindow);
 
   if (!app.isPackaged) {
     mainWindow.loadURL('http://localhost:5173');
@@ -241,6 +348,7 @@ app.whenReady().then(async () => {
 
   registerIPCHandlers();
 
+  setupApplicationMenu();
   createWindow();
   appInitialized = true;
   setupAutoUpdater();
