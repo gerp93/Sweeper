@@ -10,6 +10,11 @@ import Rules from './Rules';
 
 interface RowOverride {
   include: boolean;
+  // Per-row account override, e.g. a generic "Check" row that is really a property tax payment.
+  // Null means use the matched account (or the description resolution for unmatched rows).
+  accountId: string | null;
+  // Undefined means "auto" (the account's auto-allocate obligation); '' means explicitly none.
+  obligationId?: string;
 }
 
 interface AccountResolution {
@@ -62,7 +67,7 @@ export default function ImportTransactions() {
 
       const rows = parseStatementCSV(text, rules, accts, aliases, existing);
       setPreview(rows);
-      setOverrides(rows.map((r) => ({ include: r.include })));
+      setOverrides(rows.map((r) => ({ include: r.include, accountId: null })));
       setExistingTransactions(existing);
       setAccounts(accts);
       const initialResolutions: Record<string, AccountResolution> = {};
@@ -87,6 +92,22 @@ export default function ImportTransactions() {
   function updateOverride(idx: number, patch: Partial<RowOverride>) {
     setOverrides((prev) => prev.map((o, i) => (i === idx ? { ...o, ...patch } : o)));
     setPendingCollisions(null);
+  }
+
+  // The account a row will land on, honoring a per-row override. Null while an unmatched row
+  // is still waiting on the description resolution.
+  function rowAccountId(row: ParsedImportRow, idx: number): string | null {
+    return overrides[idx]?.accountId ?? row.matchedAccount?.id ?? null;
+  }
+
+  function autoObligationIdFor(accountId: string | null): string {
+    if (!autoAllocateObligations || !accountId) return '';
+    return obligations.find((o) => o.accountId === accountId && o.autoAllocate)?.id ?? '';
+  }
+
+  function rowObligationId(row: ParsedImportRow, idx: number): string {
+    const explicit = overrides[idx]?.obligationId;
+    return explicit !== undefined ? explicit : autoObligationIdFor(rowAccountId(row, idx));
   }
 
   function updateResolution(description: string, patch: Partial<AccountResolution>) {
@@ -122,13 +143,13 @@ export default function ImportTransactions() {
     const out: string[] = [];
     includedIndexes.forEach((idx) => {
       const row = preview[idx];
-      if (!row.matchedAccount && !seen.has(row.description)) {
+      if (!row.matchedAccount && !overrides[idx]?.accountId && !seen.has(row.description)) {
         seen.add(row.description);
         out.push(row.description);
       }
     });
     return out;
-  }, [preview, includedIndexes]);
+  }, [preview, overrides, includedIndexes]);
 
   const hasUnresolvedChoice = unmatchedToResolve.some((desc) => {
     const r = resolutions[desc] ?? defaultResolution(desc);
@@ -187,7 +208,7 @@ export default function ImportTransactions() {
           continue;
         }
 
-        let accountId: string | null = row.matchedAccount?.id ?? null;
+        let accountId: string | null = rowAccountId(row, i);
         if (!accountId) {
           if (resolvedAccountIds.has(row.description)) {
             accountId = resolvedAccountIds.get(row.description)!;
@@ -206,10 +227,7 @@ export default function ImportTransactions() {
           }
         }
 
-        const autoObligation =
-          autoAllocateObligations && accountId
-            ? obligations.find((o) => o.accountId === accountId && o.autoAllocate)
-            : undefined;
+        const obligationId = override.obligationId !== undefined ? override.obligationId : autoObligationIdFor(accountId);
 
         inputs.push({
           accountId,
@@ -219,7 +237,7 @@ export default function ImportTransactions() {
           amount: row.amount,
           memo: row.memo,
           category: row.category,
-          obligationId: autoObligation?.id ?? null,
+          obligationId: obligationId || null,
         });
         importedCount++;
       }
@@ -543,6 +561,7 @@ export default function ImportTransactions() {
                 <th>Date</th>
                 <th>Description</th>
                 <th>Account</th>
+                {obligations.length > 0 && <th>Obligation</th>}
                 <th style={{ textAlign: 'right' }}>Amount</th>
                 <th>Status</th>
               </tr>
@@ -569,12 +588,47 @@ export default function ImportTransactions() {
                     <td>
                       {skippedByRule ? (
                         '—'
-                      ) : row.matchedAccount ? (
-                        row.matchedAccount.friendlyName
                       ) : (
-                        <span className="text-muted">see "New Account Descriptions" above</span>
+                        <select
+                          value={override.accountId ?? row.matchedAccount?.id ?? ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            // Picking the already-matched account (or blank) clears the override.
+                            updateOverride(idx, {
+                              accountId: value && value !== row.matchedAccount?.id ? value : null,
+                            });
+                          }}
+                        >
+                          {!row.matchedAccount && (
+                            <option value="">New — see "New Account Descriptions" above</option>
+                          )}
+                          {accounts.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.friendlyName}
+                            </option>
+                          ))}
+                        </select>
                       )}
                     </td>
+                    {obligations.length > 0 && (
+                      <td>
+                        {skippedByRule ? (
+                          '—'
+                        ) : (
+                          <select
+                            value={rowObligationId(row, idx)}
+                            onChange={(e) => updateOverride(idx, { obligationId: e.target.value })}
+                          >
+                            <option value="">(none)</option>
+                            {obligations.map((o) => (
+                              <option key={o.id} value={o.id}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
+                    )}
                     <td style={{ textAlign: 'right' }} className={row.amount >= 0 ? 'amount-positive' : 'amount-negative'}>
                       {formatCurrency(row.amount)}
                     </td>
@@ -585,13 +639,11 @@ export default function ImportTransactions() {
                           Same-day/amount match
                         </span>
                       )}
-                      {autoAllocateObligations &&
-                        row.matchedAccount &&
-                        obligations.some((o) => o.accountId === row.matchedAccount!.id && o.autoAllocate) && (
-                          <span className="pill pill-included" style={{ marginLeft: 6 }}>
-                            → obligation
-                          </span>
-                        )}
+                      {!skippedByRule && rowObligationId(row, idx) && (
+                        <span className="pill pill-included" style={{ marginLeft: 6 }}>
+                          → obligation
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );
