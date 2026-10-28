@@ -56,8 +56,11 @@ const LINE_ITEM_PRECEDENCE_ORDER = `ORDER BY priority ASC, created_at ASC`;
 // can't be told apart between). Instead, the obligation's total allocated dollars cascade
 // through its line items in precedence order: fully pay off the first, then spill into the
 // next, etc.
-function applyWaterfall(items: RawLineItem[], totalAllocated: number): ObligationLineItem[] {
-  let pool = Math.max(totalAllocated, 0);
+// `netAllocated` is the plain sum of the allocated transactions' amounts. A payment is money
+// leaving the account (negative), so it's the outflow that pays the obligation down; a positive
+// (refund) allocated to it offsets that, and the pool never goes below zero.
+function applyWaterfall(items: RawLineItem[], netAllocated: number): ObligationLineItem[] {
+  let pool = Math.max(-netAllocated, 0);
   return items.map((item) => {
     const allocated = Math.min(item.amount, pool);
     pool -= allocated;
