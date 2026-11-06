@@ -58,11 +58,14 @@ const LINE_ITEM_PRECEDENCE_ORDER = `ORDER BY priority ASC, created_at ASC`;
 // next, etc.
 // `netAllocated` is the plain sum of the allocated transactions' amounts. A payment is money
 // leaving the account (negative), so it's the outflow that pays the obligation down; a positive
-// (refund) allocated to it offsets that, and the pool never goes below zero.
+// (refund) allocated to it offsets that, and the pool never goes below zero. Any dollars left
+// over once every line item is fully paid are an over-allocation: they land on the last line
+// item, so its (and the obligation's) remaining goes negative instead of hiding the overpayment.
 function applyWaterfall(items: RawLineItem[], netAllocated: number): ObligationLineItem[] {
   let pool = Math.max(-netAllocated, 0);
-  return items.map((item) => {
-    const allocated = Math.min(item.amount, pool);
+  return items.map((item, index) => {
+    const isLast = index === items.length - 1;
+    const allocated = isLast ? pool : Math.min(item.amount, pool);
     pool -= allocated;
     return { ...item, allocated, remaining: item.amount - allocated };
   });
@@ -262,7 +265,8 @@ export class ObligationService {
   }
 
   getTotalObligated(): number {
-    return this.getAllObligations().reduce((sum, o) => sum + o.remaining, 0);
+    // An over-allocated obligation (negative remaining) holds back nothing -- the extra is already spent.
+    return this.getAllObligations().reduce((sum, o) => sum + Math.max(o.remaining, 0), 0);
   }
 
   createObligation(input: CreateObligationInput): Obligation {

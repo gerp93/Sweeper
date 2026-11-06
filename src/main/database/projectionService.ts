@@ -266,7 +266,7 @@ export class ProjectionService {
     return this.obligationService
       .getAllObligations()
       .filter((o) => o.targetDate != null && o.targetDate <= date)
-      .reduce((sum, o) => sum + o.remaining, 0);
+      .reduce((sum, o) => sum + Math.max(o.remaining, 0), 0);
   }
 
   // Accounts holding money already spoken for by an unpaid Obligation -- their transactions

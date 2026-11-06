@@ -595,7 +595,7 @@ export default function Transactions() {
     .filter((tx) => monthKey(tx.date) === thisCalendarMonthKey)
     .reduce((sum, tx) => sum + tx.amount, 0);
   const netAllTime = transactions.reduce((sum, tx) => sum + tx.amount, 0);
-  const totalObligated = obligations.reduce((sum, o) => sum + o.remaining, 0);
+  const totalObligated = obligations.reduce((sum, o) => sum + Math.max(o.remaining, 0), 0);
   const currentBalanceOwed =
     helocSettings?.originalAmount != null && overallSpendable?.anchor
       ? helocSettings.originalAmount - overallSpendable.balance
