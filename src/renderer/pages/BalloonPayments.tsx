@@ -337,7 +337,7 @@ export default function BalloonPayments() {
   const activeObligations = obligations.filter((o) => o.remaining > 0 && !isBeyondRecurringHorizon(o, today));
   const completedObligations = obligations.filter((o) => o.remaining <= 0);
   const visibleObligations = activeTab === 'completed' ? completedObligations : activeObligations;
-  const totalObligated = obligations.reduce((sum, o) => sum + o.remaining, 0);
+  const totalObligated = obligations.reduce((sum, o) => sum + Math.max(o.remaining, 0), 0);
   const trulyAvailable = spendable ? spendable.balance - totalObligated : null;
   const editingObligation = editingId ? obligations.find((o) => o.id === editingId) ?? null : null;
   const cloneSource = cloneSourceId ? obligations.find((o) => o.id === cloneSourceId) ?? null : null;
@@ -421,6 +421,7 @@ export default function BalloonPayments() {
               {visibleObligations.map((o) => {
                 const overdue = o.targetDate != null && o.targetDate < today && o.remaining > 0;
                 const fulfilled = o.remaining <= 0;
+                const overpaid = o.remaining < 0;
                 const linkedAccountName = accountName(o.accountId);
                 const expanded = expandedId === o.id;
                 const hasMultipleLineItems = o.lineItems.length > 1;
@@ -441,9 +442,14 @@ export default function BalloonPayments() {
                       </td>
                       <td>
                         {o.label}
-                        {fulfilled && (
+                        {fulfilled && !overpaid && (
                           <span className="pill pill-included" style={{ marginLeft: 8 }}>
                             Fulfilled
+                          </span>
+                        )}
+                        {overpaid && (
+                          <span className="pill pill-collision" style={{ marginLeft: 8 }}>
+                            Overpaid
                           </span>
                         )}
                         {overdue && !fulfilled && (
@@ -462,7 +468,7 @@ export default function BalloonPayments() {
                           </div>
                         )}
                       </td>
-                      <td style={{ textAlign: 'right' }} className={fulfilled ? 'amount-positive' : undefined}>
+                      <td style={{ textAlign: 'right' }} className={overpaid ? 'amount-negative' : fulfilled ? 'amount-positive' : undefined}>
                         {formatCurrency(o.remaining)}
                         {hasMultipleLineItems && (
                           <div className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>
@@ -515,7 +521,7 @@ export default function BalloonPayments() {
                                   <td>{item.label ?? '—'}</td>
                                   <td
                                     style={{ textAlign: 'right' }}
-                                    className={item.remaining <= 0 ? 'amount-positive' : undefined}
+                                    className={item.remaining < 0 ? 'amount-negative' : item.remaining === 0 ? 'amount-positive' : undefined}
                                   >
                                     {formatCurrency(item.remaining)}
                                   </td>
