@@ -97,6 +97,10 @@ export default function BalloonPayments() {
   // happens inside the Edit Obligation modal.
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // Fulfilled obligations (nothing remaining) live on their own tab so the default view only
+  // shows what still needs money set aside.
+  const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
+
   // Add/edit line item mini-form, shown inside the Edit Obligation modal for whichever
   // obligation is currently being edited. Line items are just label + amount now -- date lives
   // on the obligation itself.
@@ -330,7 +334,9 @@ export default function BalloonPayments() {
   }
 
   const today = todayIso();
-  const visibleObligations = obligations.filter((o) => !isBeyondRecurringHorizon(o, today));
+  const activeObligations = obligations.filter((o) => o.remaining > 0 && !isBeyondRecurringHorizon(o, today));
+  const completedObligations = obligations.filter((o) => o.remaining <= 0);
+  const visibleObligations = activeTab === 'completed' ? completedObligations : activeObligations;
   const totalObligated = obligations.reduce((sum, o) => sum + o.remaining, 0);
   const trulyAvailable = spendable ? spendable.balance - totalObligated : null;
   const editingObligation = editingId ? obligations.find((o) => o.id === editingId) ?? null : null;
@@ -373,12 +379,31 @@ export default function BalloonPayments() {
         </div>
       </div>
 
+      <div className="tab-bar" style={{ marginBottom: 12 }}>
+        <button
+          className={`tab-button${activeTab === 'active' ? ' active' : ''}`}
+          onClick={() => setActiveTab('active')}
+        >
+          Active ({activeObligations.length})
+        </button>
+        <button
+          className={`tab-button${activeTab === 'completed' ? ' active' : ''}`}
+          onClick={() => setActiveTab('completed')}
+        >
+          Completed ({completedObligations.length})
+        </button>
+      </div>
+
       <div className="card" style={{ padding: 0 }}>
         {loading ? (
           <div className="empty-state">Loading…</div>
         ) : visibleObligations.length === 0 ? (
           <div className="empty-state">
-            {obligations.length === 0 ? 'No obligations set up yet.' : 'No obligations due within the next year.'}
+            {activeTab === 'completed'
+              ? 'No completed obligations yet.'
+              : obligations.length === 0
+                ? 'No obligations set up yet.'
+                : 'No active obligations due within the next year.'}
           </div>
         ) : (
           <table className="data-table">
