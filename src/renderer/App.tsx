@@ -4,6 +4,7 @@ import Transactions from './pages/Transactions';
 import ReconciliationPage from './pages/Reconciliation';
 import Projections from './pages/Projections';
 import Accounts from './pages/Accounts';
+import CashTracker from './pages/CashTracker';
 import Settings from './pages/Settings';
 import Layout from './components/Layout';
 import { RightSidebarProvider } from './context/RightSidebarContext';
@@ -25,6 +26,7 @@ function App() {
               <Route path="/reserves" element={<Navigate to="/projections?tab=balloon" replace />} />
               <Route path="/projections" element={<Projections />} />
               <Route path="/recurring-bills" element={<Navigate to="/projections?tab=recurring" replace />} />
+              <Route path="/cash" element={<CashTracker />} />
               <Route path="/accounts" element={<Accounts />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>

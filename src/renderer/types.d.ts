@@ -6,6 +6,7 @@ import { ImportBatch, CreateImportBatchInput } from '../shared/types/importBatch
 import { BalanceAnchor, CreateBalanceAnchorInput, SpendableBalance } from '../shared/types/balanceAnchor';
 import { HelocSettings, UpdateHelocSettingsInput } from '../shared/types/helocSettings';
 import { Reconciliation, CreateReconciliationInput } from '../shared/types/reconciliation';
+import { CashEntry, CreateCashEntryInput } from '../shared/types/cashEntry';
 import {
   Obligation,
   CreateObligationInput,
@@ -85,6 +86,11 @@ declare global {
       reconciliations: {
         getAll: () => Promise<Reconciliation[]>;
         create: (input: CreateReconciliationInput) => Promise<Reconciliation>;
+        delete: (id: string) => Promise<{ success: boolean }>;
+      };
+      cashEntries: {
+        getAll: () => Promise<CashEntry[]>;
+        create: (input: CreateCashEntryInput) => Promise<CashEntry>;
         delete: (id: string) => Promise<{ success: boolean }>;
       };
       obligations: {

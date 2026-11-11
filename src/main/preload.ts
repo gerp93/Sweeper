@@ -6,6 +6,7 @@ import { CreateImportBatchInput } from '../shared/types/importBatch';
 import { CreateBalanceAnchorInput } from '../shared/types/balanceAnchor';
 import { UpdateHelocSettingsInput } from '../shared/types/helocSettings';
 import { CreateReconciliationInput } from '../shared/types/reconciliation';
+import { CreateCashEntryInput } from '../shared/types/cashEntry';
 import {
   CreateObligationInput,
   UpdateObligationInput,
@@ -77,6 +78,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAll: () => ipcRenderer.invoke('reconciliations:getAll'),
     create: (input: CreateReconciliationInput) => ipcRenderer.invoke('reconciliations:create', input),
     delete: (id: string) => ipcRenderer.invoke('reconciliations:delete', id),
+  },
+
+  cashEntries: {
+    getAll: () => ipcRenderer.invoke('cashEntries:getAll'),
+    create: (input: CreateCashEntryInput) => ipcRenderer.invoke('cashEntries:create', input),
+    delete: (id: string) => ipcRenderer.invoke('cashEntries:delete', id),
   },
 
   obligations: {

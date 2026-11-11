@@ -22,6 +22,7 @@ import { BalanceAnchorService } from './database/balanceAnchorService';
 import { BalanceService } from './database/balanceService';
 import { HelocSettingsService } from './database/helocSettingsService';
 import { ReconciliationService } from './database/reconciliationService';
+import { CashEntryService } from './database/cashEntryService';
 import { ObligationService } from './database/obligationService';
 import { ProjectionService } from './database/projectionService';
 import { RecurringBillService } from './database/recurringBillService';
@@ -32,6 +33,7 @@ import { CreateImportBatchInput } from '../shared/types/importBatch';
 import { CreateBalanceAnchorInput } from '../shared/types/balanceAnchor';
 import { UpdateHelocSettingsInput } from '../shared/types/helocSettings';
 import { CreateReconciliationInput } from '../shared/types/reconciliation';
+import { CreateCashEntryInput } from '../shared/types/cashEntry';
 import {
   CreateObligationInput,
   UpdateObligationInput,
@@ -89,6 +91,7 @@ let balanceAnchorService: BalanceAnchorService;
 let balanceService: BalanceService;
 let helocSettingsService: HelocSettingsService;
 let reconciliationService: ReconciliationService;
+let cashEntryService: CashEntryService;
 let obligationService: ObligationService;
 let projectionService: ProjectionService;
 let recurringBillService: RecurringBillService;
@@ -340,6 +343,7 @@ app.whenReady().then(async () => {
   balanceService = new BalanceService(balanceAnchorService, transactionService);
   helocSettingsService = new HelocSettingsService(db);
   reconciliationService = new ReconciliationService(db, balanceService);
+  cashEntryService = new CashEntryService(db);
   obligationService = new ObligationService(db);
   recurringBillService = new RecurringBillService(db, transactionService);
   projectionService = new ProjectionService(db, balanceService, obligationService, transactionService, recurringBillService);
@@ -458,6 +462,14 @@ function registerIPCHandlers() {
   );
   ipcMain.handle('reconciliations:delete', (_, id: string) => {
     reconciliationService.deleteReconciliation(id);
+    return { success: true };
+  });
+
+  // Cash tracker handlers
+  ipcMain.handle('cashEntries:getAll', () => cashEntryService.getAllEntries());
+  ipcMain.handle('cashEntries:create', (_, input: CreateCashEntryInput) => cashEntryService.createEntry(input));
+  ipcMain.handle('cashEntries:delete', (_, id: string) => {
+    cashEntryService.deleteEntry(id);
     return { success: true };
   });
 
