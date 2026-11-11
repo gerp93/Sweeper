@@ -399,6 +399,18 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
     )
   `);
 
+  // Standalone log of physical cash on hand. Intentionally has no foreign keys and nothing
+  // else reads it -- it's separate from the HELOC/transaction data.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS cash_entries (
+      id TEXT PRIMARY KEY,
+      amount REAL NOT NULL,
+      date TEXT NOT NULL,
+      note TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+
   db.run(`
     CREATE TABLE IF NOT EXISTS income_projections (
       id TEXT PRIMARY KEY,
@@ -487,6 +499,7 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_description ON transactions(description)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_balance_anchors_date ON balance_anchors(as_of_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_reconciliations_date ON reconciliations(as_of_date)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_cash_entries_date ON cash_entries(date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_obligation_line_items_obligation ON obligation_line_items(obligation_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_heloc_obligations_target_date ON heloc_obligations(target_date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_heloc_obligations_series ON heloc_obligations(series_id)`);
