@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { SimplefinStatus, SimplefinSyncResult } from '../../shared/types/simplefinStatus';
+import { SimplefinReconcileOutcome, SimplefinStatus, SimplefinSyncResult } from '../../shared/types/simplefinStatus';
+import { formatCurrency, formatDate } from '../utils/format';
 
 function formatWhen(iso: string | null): string {
   if (!iso) return 'Never';
@@ -12,6 +13,18 @@ function describeResult(r: SimplefinSyncResult): string {
   if (r.alreadyImported > 0) parts.push(`${r.alreadyImported} already imported by hand`);
   if (r.excludedByRule > 0) parts.push(`${r.excludedByRule} skipped by import rules`);
   return parts.join(', ') + '.';
+}
+
+function describeReconcile(r: SimplefinReconcileOutcome): string {
+  if (r.status === 'unavailable') return `Not checked. ${r.message}`;
+  const day = r.asOfDate ? formatDate(r.asOfDate) : '';
+  if (r.status === 'mismatch') {
+    return `Doesn't match as of ${day}: bank ${formatCurrency(r.bankBalance ?? 0)}, Sweeper ${formatCurrency(
+      r.computedBalance ?? 0
+    )} (off by ${formatCurrency(r.difference ?? 0)}). Nothing recorded; look into it on the Reconcile page.`;
+  }
+  if (r.status === 'unchanged') return `Matches as of ${day} (${formatCurrency(r.bankBalance ?? 0)}), already recorded.`;
+  return `Matched as of ${day} (${formatCurrency(r.bankBalance ?? 0)}) and recorded.`;
 }
 
 export default function AutomatedImportSettings() {
@@ -91,6 +104,14 @@ export default function AutomatedImportSettings() {
     }
   }
 
+  async function changeReconcileAccount(id: string) {
+    try {
+      setStatus(await window.electronAPI.simplefin.setReconcileAccount(id || null));
+    } catch (err) {
+      setError(cleanError(err));
+    }
+  }
+
   async function toggleAccount(id: string, checked: boolean) {
     if (!status) return;
     const ids = checked
@@ -111,8 +132,8 @@ export default function AutomatedImportSettings() {
     <div className="card" style={{ marginBottom: 20 }}>
       <h2 style={{ fontSize: 15, marginTop: 0 }}>Automated import (SimpleFIN Bridge)</h2>
       <p className="text-muted" style={{ marginTop: -8, fontSize: 13 }}>
-        Pulls new bank transactions in every time Sweeper opens, using the same import rules and account names as the
-        CSV import. Manual import still works as a fallback.
+        Pulls new bank transactions in every time Sweeper opens and then once a day while it stays open, using the
+        same import rules and account names as the CSV import. Manual import still works as a fallback.
       </p>
 
       {!status.connected && (
@@ -160,18 +181,32 @@ export default function AutomatedImportSettings() {
                     ? 'Importing…'
                     : status.selectedAccountIds.length === 0
                       ? 'Connected. Choose an account below.'
-                      : 'Connected. Imports when Sweeper opens.'}
+                      : 'Connected. Imports when Sweeper opens and every 24 hours while it is open.'}
                 </td>
               </tr>
               <tr>
                 <td className="text-muted" style={{ paddingRight: 16 }}>Last successful import</td>
                 <td>{formatWhen(status.lastSuccessAt)}</td>
               </tr>
+              {status.nextSyncAt && (
+                <tr>
+                  <td className="text-muted" style={{ paddingRight: 16 }}>Next automatic import</td>
+                  <td>{formatWhen(status.nextSyncAt)} (if Sweeper is open)</td>
+                </tr>
+              )}
               {status.lastResult && (
                 <tr>
                   <td className="text-muted" style={{ paddingRight: 16 }}>Last result</td>
                   <td className={status.lastResult.ok ? '' : 'amount-negative'}>
                     {describeResult(status.lastResult)}
+                  </td>
+                </tr>
+              )}
+              {status.lastResult?.ok && status.lastResult.reconcile && (
+                <tr>
+                  <td className="text-muted" style={{ paddingRight: 16 }}>Reconciliation</td>
+                  <td className={status.lastResult.reconcile.status === 'recorded' || status.lastResult.reconcile.status === 'unchanged' ? '' : 'amount-negative'}>
+                    {describeReconcile(status.lastResult.reconcile)}
                   </td>
                 </tr>
               )}
@@ -207,6 +242,28 @@ export default function AutomatedImportSettings() {
             </div>
           )}
 
+          {status.accounts.length > 0 && (
+            <div style={{ fontSize: 13, marginBottom: 12 }}>
+              <div className="text-muted" style={{ marginBottom: 4 }}>
+                Reconcile against (its available balance is checked after each import; no transactions are imported
+                from it unless ticked above)
+              </div>
+              <select
+                value={status.reconcileAccountId ?? ''}
+                onChange={(e) => void changeReconcileAccount(e.target.value)}
+                disabled={busy !== null}
+              >
+                <option value="">Don't reconcile automatically</option>
+                {status.accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                    {a.orgName ? ` (${a.orgName})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               className="btn btn-primary"
@@ -220,8 +277,8 @@ export default function AutomatedImportSettings() {
             </button>
           </div>
           <p className="text-muted" style={{ fontSize: 12, marginTop: 10, marginBottom: 0 }}>
-            SimpleFIN allows about 24 refreshes a day, so opening Sweeper again within an hour of the last import
-            doesn't import again. Use Sync now for that.
+            SimpleFIN refreshes bank data about once a day and allows about 24 requests a day, so opening Sweeper again
+            within an hour of the last import doesn't import again. Use Sync now for that.
           </p>
         </>
       )}

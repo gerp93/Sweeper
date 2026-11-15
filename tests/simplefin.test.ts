@@ -8,8 +8,13 @@ import {
   PlanContext,
   computeSyncStart,
   computeSyncWindows,
+  SCHEDULED_SYNC_INTERVAL_MS,
+  MIN_SYNC_GAP_MS,
   decodeSetupToken,
   epochToIsoDate,
+  isScheduledSyncDue,
+  nextScheduledSyncMs,
+  reconcileBalanceOf,
   isoDateToEpoch,
   parseAccountSet,
   planSimplefinImport,
@@ -248,4 +253,46 @@ test('computeSyncWindows splits long gaps into windows SimpleFIN accepts', () =>
 test('sanitizeRemoteText strips URLs, control characters and long text', () => {
   assert.equal(sanitizeRemoteText(`Bad ${FAKE_ACCESS_URL}/accounts\u0007 here`), 'Bad [link] here');
   assert.equal(sanitizeRemoteText('x'.repeat(300)).length, 200);
+});
+
+test('parseAccountSet reads the available balance, which may be omitted', () => {
+  const set = parseAccountSet({
+    accounts: [
+      { id: 'LOC', name: 'Demo HELOC', balance: '-71601.77', 'available-balance': '28398.23', 'balance-date': noon('2026-11-14') },
+      { id: 'CHK', name: 'Demo Checking', balance: '50.00' },
+    ],
+  });
+  assert.equal(set.accounts[0].availableBalance, 28398.23);
+  assert.equal(reconcileBalanceOf(set.accounts[0]), 28398.23);
+  assert.equal(set.accounts[1].availableBalance, null);
+  assert.equal(reconcileBalanceOf(set.accounts[1]), 50);
+});
+
+test('isScheduledSyncDue waits a day after the last success and spaces out retries', () => {
+  const now = Date.parse('2026-11-15T12:00:00Z');
+  const ago = (ms: number) => new Date(now - ms).toISOString();
+  const H = 60 * 60 * 1000;
+  // Never synced: due.
+  assert.equal(isScheduledSyncDue({ nowMs: now, lastAttemptAt: null, lastSuccessAt: null }), true);
+  // Succeeded 23h ago: not yet. 24h ago: due.
+  assert.equal(isScheduledSyncDue({ nowMs: now, lastAttemptAt: ago(23 * H), lastSuccessAt: ago(23 * H) }), false);
+  assert.equal(
+    isScheduledSyncDue({ nowMs: now, lastAttemptAt: ago(SCHEDULED_SYNC_INTERVAL_MS), lastSuccessAt: ago(SCHEDULED_SYNC_INTERVAL_MS) }),
+    true
+  );
+  // A failed attempt 10 minutes ago (last success 2 days ago) waits for the gap, then retries.
+  assert.equal(isScheduledSyncDue({ nowMs: now, lastAttemptAt: ago(10 * 60 * 1000), lastSuccessAt: ago(48 * H) }), false);
+  assert.equal(isScheduledSyncDue({ nowMs: now, lastAttemptAt: ago(MIN_SYNC_GAP_MS), lastSuccessAt: ago(48 * H) }), true);
+});
+
+test('nextScheduledSyncMs is a day after the last success, or null when due now', () => {
+  const now = Date.parse('2026-11-15T12:00:00Z');
+  const success = new Date(now - 2 * 60 * 60 * 1000).toISOString();
+  assert.equal(
+    nextScheduledSyncMs({ nowMs: now, lastAttemptAt: success, lastSuccessAt: success }),
+    Date.parse(success) + SCHEDULED_SYNC_INTERVAL_MS
+  );
+  assert.equal(nextScheduledSyncMs({ nowMs: now, lastAttemptAt: null, lastSuccessAt: null }), null);
+  const old = new Date(now - 30 * 60 * 60 * 1000).toISOString();
+  assert.equal(nextScheduledSyncMs({ nowMs: now, lastAttemptAt: old, lastSuccessAt: old }), null);
 });

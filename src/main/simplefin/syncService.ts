@@ -6,14 +6,19 @@ import { TransactionService } from '../database/transactionService';
 import { ImportRuleService } from '../database/importRuleService';
 import { ImportBatchService } from '../database/importBatchService';
 import { ObligationService } from '../database/obligationService';
+import { BalanceService } from '../database/balanceService';
+import { ReconciliationService } from '../database/reconciliationService';
 import { CreateTransactionInput } from '../../shared/types/transaction';
-import { SimplefinAccountInfo, SimplefinStatus, SimplefinSyncResult } from '../../shared/types/simplefinStatus';
+import { SimplefinAccountInfo, SimplefinReconcileOutcome, SimplefinStatus, SimplefinSyncResult } from '../../shared/types/simplefinStatus';
 import {
   SimplefinAccountSet,
   computeSyncStart,
   computeSyncWindows,
   epochToIsoDate,
+  isScheduledSyncDue,
+  nextScheduledSyncMs,
   planSimplefinImport,
+  reconcileBalanceOf,
   sanitizeRemoteText,
 } from '../../shared/simplefin';
 import { claimSetupToken, fetchTransactions, listAccounts } from './client';
@@ -29,6 +34,9 @@ import {
 // A launch sync is skipped if one ran this recently: SimpleFIN allows about 24 requests a day,
 // and reopening the app several times an hour must not use them up. "Sync now" always runs.
 const AUTO_SYNC_MIN_GAP_MS = 60 * 60 * 1000;
+// While the app stays open it checks this often whether the 24-hour schedule has come due (a
+// short tick, not a long timer, so a laptop that slept through the due time catches up on waking).
+const SCHEDULE_CHECK_MS = 5 * 60 * 1000;
 
 export const BATCH_NAME = 'SimpleFIN automatic import';
 
@@ -40,6 +48,8 @@ export interface SyncServices {
   rules: ImportRuleService;
   batches: ImportBatchService;
   obligations: ObligationService;
+  balances: BalanceService;
+  reconciliations: ReconciliationService;
 }
 
 function accountInfos(sets: SimplefinAccountSet[]): SimplefinAccountInfo[] {
@@ -71,6 +81,7 @@ function safeMessage(err: unknown): string {
 
 export class SimplefinSyncService {
   private running: Promise<SimplefinSyncResult> | null = null;
+  private timer: NodeJS.Timeout | null = null;
 
   constructor(private s: SyncServices, private onFinished: (result: SimplefinSyncResult) => void) {}
 
@@ -81,6 +92,8 @@ export class SimplefinSyncService {
       secureStorageAvailable: isSecureStorageAvailable(),
       accounts: conn?.accounts ?? [],
       selectedAccountIds: conn?.selectedAccountIds ?? [],
+      reconcileAccountId: conn?.reconcileAccountId ?? null,
+      nextSyncAt: this.nextSyncAt(),
       connectedAt: conn?.connectedAt ?? null,
       lastAttemptAt: conn?.lastAttemptAt ?? null,
       lastSuccessAt: conn?.lastSuccessAt ?? null,
@@ -121,6 +134,26 @@ export class SimplefinSyncService {
     return this.getStatus();
   }
 
+  setReconcileAccount(id: string | null): SimplefinStatus {
+    const conn = getConnection();
+    if (conn) {
+      const known = id !== null && conn.accounts.some((a) => a.id === id);
+      updateConnection({ reconcileAccountId: known ? id : null });
+    }
+    return this.getStatus();
+  }
+
+  private nextSyncAt(): string | null {
+    const conn = getConnection();
+    if (!conn || conn.selectedAccountIds.length === 0) return null;
+    const next = nextScheduledSyncMs({
+      nowMs: Date.now(),
+      lastAttemptAt: conn.lastAttemptAt,
+      lastSuccessAt: conn.lastSuccessAt,
+    });
+    return next === null ? null : new Date(next).toISOString();
+  }
+
   disconnect(): SimplefinStatus {
     deleteConnection();
     return this.getStatus();
@@ -131,6 +164,28 @@ export class SimplefinSyncService {
     const conn = getConnection();
     if (!conn) return;
     if (conn.lastAttemptAt && Date.now() - Date.parse(conn.lastAttemptAt) < AUTO_SYNC_MIN_GAP_MS) return;
+    await this.sync();
+  }
+
+  // Keeps importing while the app is open: once a day, counted from the last successful import.
+  // There is no background service; closing the app stops it, and the launch sync covers the gap.
+  startSchedule(): void {
+    if (this.timer) return;
+    this.timer = setInterval(() => void this.syncIfDue(), SCHEDULE_CHECK_MS);
+    this.timer.unref();
+  }
+
+  stopSchedule(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  private async syncIfDue(): Promise<void> {
+    const conn = getConnection();
+    if (!conn || conn.selectedAccountIds.length === 0 || this.running) return;
+    if (!isScheduledSyncDue({ nowMs: Date.now(), lastAttemptAt: conn.lastAttemptAt, lastSuccessAt: conn.lastSuccessAt })) {
+      return;
+    }
     await this.sync();
   }
 
@@ -156,6 +211,53 @@ export class SimplefinSyncService {
     const res = this.s.db.exec(sql);
     const value = res[0]?.values[0]?.[0];
     return typeof value === 'string' ? value : null;
+  }
+
+  // Compares the bank's available balance for the reconcile account with Sweeper's computed
+  // balance as of the day the bank stamped it. A match is recorded as a reconciliation (same as
+  // confirming by hand); a mismatch is reported but never recorded, because a reconciliation marks
+  // every earlier transaction as checked. Never throws: the import already succeeded.
+  private reconcile(sets: SimplefinAccountSet[], accountId: string): SimplefinReconcileOutcome {
+    const unavailable = (message: string): SimplefinReconcileOutcome => ({
+      status: 'unavailable',
+      asOfDate: null,
+      bankBalance: null,
+      computedBalance: null,
+      difference: null,
+      message,
+    });
+    try {
+      // The newest window holds the freshest balance.
+      const account = [...sets].reverse().flatMap((set) => set.accounts).find((a) => a.id === accountId);
+      if (!account) return unavailable("SimpleFIN didn't return the reconcile account.");
+      const bankBalance = reconcileBalanceOf(account);
+      if (bankBalance === null) return unavailable(`SimpleFIN gave no balance for ${sanitizeRemoteText(account.name)}.`);
+
+      const today = new Date().toISOString().slice(0, 10);
+      const stamped = account.balanceDate && account.balanceDate > 0 ? epochToIsoDate(account.balanceDate) : today;
+      const asOfDate = stamped > today ? today : stamped;
+
+      const computedBalance = this.s.balances.getSpendableBalance(asOfDate).balance;
+      const difference = Math.round((bankBalance - computedBalance) * 100) / 100;
+      const base = { asOfDate, bankBalance, computedBalance, difference };
+
+      if (difference !== 0) {
+        return { ...base, status: 'mismatch', message: 'The bank balance does not match Sweeper, so nothing was recorded.' };
+      }
+      const already = this.s.reconciliations
+        .getAllReconciliations()
+        .some((r) => r.asOfDate === asOfDate && Math.round(r.bankBalance * 100) === Math.round(bankBalance * 100));
+      if (already) return { ...base, status: 'unchanged', message: 'Already reconciled for that day.' };
+
+      this.s.reconciliations.createReconciliation({
+        asOfDate,
+        bankBalance,
+        note: 'Automatic: SimpleFIN available balance',
+      });
+      return { ...base, status: 'recorded', message: 'Reconciled automatically.' };
+    } catch (err) {
+      return unavailable(safeMessage(err));
+    }
   }
 
   private async runSync(): Promise<SimplefinSyncResult> {
@@ -187,9 +289,14 @@ export class SimplefinSyncService {
       today,
     });
 
+    // The reconcile account is only read for its balance; the plan below imports nothing from
+    // it unless it is also ticked.
+    const reconcileId = conn.reconcileAccountId ?? null;
+    const wanted = reconcileId && !selected.includes(reconcileId) ? [...selected, reconcileId] : selected;
+
     const sets: SimplefinAccountSet[] = [];
     for (const window of computeSyncWindows(start, Math.floor(Date.now() / 1000))) {
-      sets.push(await fetchTransactions(accessUrl, window, selected));
+      sets.push(await fetchTransactions(accessUrl, window, wanted));
     }
 
     const messages: string[] = [];
@@ -286,9 +393,13 @@ export class SimplefinSyncService {
       saveDatabase(this.s.db);
     }
 
+    // After the import, so the computed balance already includes what was just brought in.
+    const reconcile = reconcileId ? this.reconcile(sets, reconcileId) : null;
+
     return {
       ok: true,
       finishedAt: new Date().toISOString(),
+      reconcile,
       imported: inputs.length,
       excludedByRule: plan.counts.excludedByRule,
       alreadyImported: plan.counts.alreadyImported,

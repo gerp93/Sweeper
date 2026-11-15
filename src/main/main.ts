@@ -360,6 +360,8 @@ app.whenReady().then(async () => {
       rules: importRuleService,
       batches: importBatchService,
       obligations: obligationService,
+      balances: balanceService,
+      reconciliations: reconciliationService,
     },
     (result) => {
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send('simplefin:syncFinished', result);
@@ -376,6 +378,7 @@ app.whenReady().then(async () => {
   mainWindow?.webContents.once('did-finish-load', () => {
     void simplefinSyncService.syncOnLaunch();
   });
+  simplefinSyncService.startSchedule();
   setupAutoUpdater();
 
   app.on('activate', () => {
@@ -458,6 +461,9 @@ function registerIPCHandlers() {
   ipcMain.handle('simplefin:connect', (_, setupToken: string) => simplefinSyncService.connect(String(setupToken ?? '')));
   ipcMain.handle('simplefin:setSelectedAccounts', (_, ids: string[]) =>
     simplefinSyncService.setSelectedAccounts(Array.isArray(ids) ? ids.map(String) : [])
+  );
+  ipcMain.handle('simplefin:setReconcileAccount', (_, id: string | null) =>
+    simplefinSyncService.setReconcileAccount(typeof id === 'string' ? id : null)
   );
   ipcMain.handle('simplefin:syncNow', () => simplefinSyncService.sync());
   ipcMain.handle('simplefin:disconnect', () => simplefinSyncService.disconnect());

@@ -17,12 +17,27 @@ Instead of exporting a CSV, Sweeper can pull transactions straight from the bank
 3. If the bank has more than one account, tick the ones to import.
 
 From then on Sweeper imports new posted transactions every time it opens (at most once an hour,
-because SimpleFIN allows about 24 refreshes a day), and **Sync now** imports on demand. Imports
+because SimpleFIN allows about 24 refreshes a day) and again every 24 hours while it stays open
+(counted from the last successful import; SimpleFIN doesn't publish a time of day for its own
+refresh, only "daily updates"). A failed scheduled sync retries after an hour. There is no
+background service: when Sweeper is closed nothing runs, and the next launch catches up.
+**Sync now** imports on demand. Imports
 use the same import rules and account names as the CSV import, and a transaction is never
 imported twice: each is remembered by its SimpleFIN id, and the first sync skips rows that were
 already imported by hand (same amount, same day or a day either side). Pending transactions wait
 until they post. A failed sync shows a notice at the top of the window and never blocks startup.
 The CSV import stays available.
+
+### Automatic reconciliation
+
+Under **Reconcile against**, pick the account whose balance Sweeper should check (for example the
+HELOC). After each import Sweeper reads that account's *available balance* (or its balance, when
+SimpleFIN omits the available one) and compares it with Sweeper's computed balance as of the day the
+bank stamped it. If they match to the cent, a reconciliation is recorded, the same as confirming on
+the Reconcile page by hand. If they don't match, nothing is recorded (a reconciliation marks
+earlier transactions as checked); the difference shows in Settings and in the notice at the top of
+the window. No transactions are imported from the reconcile account unless it is also ticked under
+**Import from**.
 
 The access SimpleFIN gives Sweeper is a credential. It is kept in `simplefin.json` in Sweeper's
 app-data folder (not in the database, which may live in a synced folder), encrypted with the

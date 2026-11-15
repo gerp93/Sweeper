@@ -73,6 +73,7 @@ declare global {
         getStatus: () => Promise<SimplefinStatus>;
         connect: (setupToken: string) => Promise<SimplefinStatus>;
         setSelectedAccounts: (ids: string[]) => Promise<SimplefinStatus>;
+        setReconcileAccount: (id: string | null) => Promise<SimplefinStatus>;
         syncNow: () => Promise<SimplefinSyncResult>;
         disconnect: () => Promise<SimplefinStatus>;
         onSyncFinished: (callback: (result: SimplefinSyncResult) => void) => () => void;

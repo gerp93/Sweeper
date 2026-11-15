@@ -61,6 +61,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getStatus: () => ipcRenderer.invoke('simplefin:getStatus'),
     connect: (setupToken: string) => ipcRenderer.invoke('simplefin:connect', setupToken),
     setSelectedAccounts: (ids: string[]) => ipcRenderer.invoke('simplefin:setSelectedAccounts', ids),
+    setReconcileAccount: (id: string | null) => ipcRenderer.invoke('simplefin:setReconcileAccount', id),
     syncNow: () => ipcRenderer.invoke('simplefin:syncNow'),
     disconnect: () => ipcRenderer.invoke('simplefin:disconnect'),
     onSyncFinished: (callback: (result: SimplefinSyncResult) => void) => {
