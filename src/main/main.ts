@@ -43,6 +43,7 @@ import {
 import { CreateIncomeProjectionInput, UpdateIncomeProjectionInput, ProjectionScenarioOptions } from '../shared/types/projection';
 import { CreateRecurringBillInput, UpdateRecurringBillInput } from '../shared/types/recurringBill';
 import { Database } from 'sql.js';
+import { SimplefinSyncService } from './simplefin/syncService';
 
 pinUserDataPath();
 app.setName('sweeper');
@@ -95,6 +96,7 @@ let cashEntryService: CashEntryService;
 let obligationService: ObligationService;
 let projectionService: ProjectionService;
 let recurringBillService: RecurringBillService;
+let simplefinSyncService: SimplefinSyncService;
 
 // Replaces Electron's default File/Edit/Window/Help menu bar with a minimal
 // View + Help (plus the macOS app-name menu), per KVG_Standards'
@@ -349,12 +351,31 @@ app.whenReady().then(async () => {
   projectionService = new ProjectionService(db, balanceService, obligationService, transactionService, recurringBillService);
 
   importRuleService.seedDefaultRules();
+  simplefinSyncService = new SimplefinSyncService(
+    {
+      db,
+      accounts: accountService,
+      aliases: accountAliasService,
+      transactions: transactionService,
+      rules: importRuleService,
+      batches: importBatchService,
+      obligations: obligationService,
+    },
+    (result) => {
+      for (const win of BrowserWindow.getAllWindows()) win.webContents.send('simplefin:syncFinished', result);
+    }
+  );
 
   registerIPCHandlers();
 
   setupApplicationMenu();
   createWindow();
   appInitialized = true;
+  // Automated import: pull new transactions once the window is up, so a slow or failed sync
+  // never holds up startup. The result arrives as a 'simplefin:syncFinished' notice.
+  mainWindow?.webContents.once('did-finish-load', () => {
+    void simplefinSyncService.syncOnLaunch();
+  });
   setupAutoUpdater();
 
   app.on('activate', () => {
@@ -430,6 +451,16 @@ function registerIPCHandlers() {
   // Import batch handlers
   ipcMain.handle('importBatches:getAll', () => importBatchService.getAllBatches());
   ipcMain.handle('importBatches:create', (_, input: CreateImportBatchInput) => importBatchService.createBatch(input));
+
+  // SimpleFIN automated import. The setup token goes in once; the access it is traded for
+  // never comes back out through IPC.
+  ipcMain.handle('simplefin:getStatus', () => simplefinSyncService.getStatus());
+  ipcMain.handle('simplefin:connect', (_, setupToken: string) => simplefinSyncService.connect(String(setupToken ?? '')));
+  ipcMain.handle('simplefin:setSelectedAccounts', (_, ids: string[]) =>
+    simplefinSyncService.setSelectedAccounts(Array.isArray(ids) ? ids.map(String) : [])
+  );
+  ipcMain.handle('simplefin:syncNow', () => simplefinSyncService.sync());
+  ipcMain.handle('simplefin:disconnect', () => simplefinSyncService.disconnect());
 
   // Balance anchor handlers
   ipcMain.handle('balanceAnchors:getAll', () => balanceAnchorService.getAllAnchors());

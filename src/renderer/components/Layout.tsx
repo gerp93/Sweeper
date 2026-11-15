@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import './Layout.css';
 import { useRightSidebarState } from '../context/RightSidebarContext';
 import FeeReminderBanner from './FeeReminderBanner';
+import SimplefinSyncBanner from './SimplefinSyncBanner';
 import logo from '../assets/logo.png';
 
 const NAV_ITEMS = [
@@ -21,6 +22,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="app-root">
       <FeeReminderBanner />
+      <SimplefinSyncBanner />
       <div className="app-shell">
         <nav className="sidebar">
           <div className="sidebar-title">

@@ -1,5 +1,6 @@
 import { Account, CreateAccountInput, UpdateAccountInput } from '../shared/types/account';
 import { AccountAlias } from '../shared/types/accountAlias';
+import { SimplefinStatus, SimplefinSyncResult } from '../shared/types/simplefinStatus';
 import { Transaction, CreateTransactionInput, UpdateTransactionInput } from '../shared/types/transaction';
 import { ImportRule, CreateImportRuleInput, UpdateImportRuleInput } from '../shared/types/importRule';
 import { ImportBatch, CreateImportBatchInput } from '../shared/types/importBatch';
@@ -67,6 +68,14 @@ declare global {
       importBatches: {
         getAll: () => Promise<ImportBatch[]>;
         create: (input: CreateImportBatchInput) => Promise<ImportBatch>;
+      };
+      simplefin: {
+        getStatus: () => Promise<SimplefinStatus>;
+        connect: (setupToken: string) => Promise<SimplefinStatus>;
+        setSelectedAccounts: (ids: string[]) => Promise<SimplefinStatus>;
+        syncNow: () => Promise<SimplefinSyncResult>;
+        disconnect: () => Promise<SimplefinStatus>;
+        onSyncFinished: (callback: (result: SimplefinSyncResult) => void) => () => void;
       };
       balanceAnchors: {
         getAll: () => Promise<BalanceAnchor[]>;

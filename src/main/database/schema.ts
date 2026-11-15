@@ -492,6 +492,22 @@ export async function initDatabase(dbPath?: string): Promise<Database> {
   // longer lives on obligation_line_items at all.
   db.run(`DROP INDEX IF EXISTS idx_obligation_line_items_target_date`);
 
+  // SimpleFIN automated import: every SimpleFIN transaction the app has already handled,
+  // keyed "<simplefin account id>:<transaction id>", so a sync never brings one in twice --
+  // including rows an import rule skipped and rows that were already imported by hand
+  // (transaction_id then points at that row). Kept on disconnect, so reconnecting the same
+  // bank does not re-import its history.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS simplefin_seen (
+      key TEXT PRIMARY KEY,
+      posted_date TEXT NOT NULL,
+      transaction_id TEXT,
+      first_seen_at TEXT NOT NULL
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_simplefin_seen_posted ON simplefin_seen(posted_date)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_simplefin_seen_transaction ON simplefin_seen(transaction_id)`);
+
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_obligation ON transactions(obligation_id)`);

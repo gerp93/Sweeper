@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import AutomatedImportSettings from '../components/AutomatedImportSettings';
 import { BalanceAnchor } from '../../shared/types/balanceAnchor';
 import { HelocSettings } from '../../shared/types/helocSettings';
 import CurrencyInput from '../components/CurrencyInput';
@@ -21,12 +23,19 @@ const MONTH_NAMES = [
   'December',
 ];
 
-type SettingsTab = 'app' | 'data';
+type SettingsTab = 'app' | 'data' | 'import';
 
 export default function Settings() {
   const { currentTheme, setTheme, availableThemes } = useTheme();
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<SettingsTab>('data');
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(
+    requestedTab === 'import' || requestedTab === 'app' ? requestedTab : 'data'
+  );
+  useEffect(() => {
+    if (requestedTab === 'import' || requestedTab === 'app' || requestedTab === 'data') setActiveTab(requestedTab);
+  }, [requestedTab]);
 
   const [dbLocation, setDbLocation] = useState<{
     path: string;
@@ -225,7 +234,12 @@ export default function Settings() {
         <button className={`tab-button${activeTab === 'app' ? ' active' : ''}`} onClick={() => setActiveTab('app')}>
           App Setup
         </button>
+        <button className={`tab-button${activeTab === 'import' ? ' active' : ''}`} onClick={() => setActiveTab('import')}>
+          Automated Import
+        </button>
       </div>
+
+      {activeTab === 'import' && <AutomatedImportSettings />}
 
       {activeTab === 'app' && (
         <>
