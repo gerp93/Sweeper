@@ -14,6 +14,7 @@ interface StoredConnection {
   connectedAt: string;
   accounts: SimplefinAccountInfo[];
   selectedAccountIds: string[];
+  reconcileAccountId?: string | null;
   lastAttemptAt: string | null;
   lastSuccessAt: string | null;
   lastResult: SimplefinSyncResult | null;
@@ -91,7 +92,7 @@ export function getAccessUrl(): string | null {
 }
 
 export function updateConnection(
-  patch: Partial<Pick<StoredConnection, 'accounts' | 'selectedAccountIds' | 'lastAttemptAt' | 'lastSuccessAt' | 'lastResult'>>
+  patch: Partial<Pick<StoredConnection, 'accounts' | 'selectedAccountIds' | 'reconcileAccountId' | 'lastAttemptAt' | 'lastSuccessAt' | 'lastResult'>>
 ): void {
   const conn = read();
   if (!conn) return;

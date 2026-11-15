@@ -91,7 +91,8 @@ export function fetchTransactions(accessUrl: string, window: SyncWindow, account
   const params = new URLSearchParams();
   params.set('start-date', String(window.startEpoch));
   if (window.endEpoch !== null) params.set('end-date', String(window.endEpoch));
-  // One request for all selected accounts: each account= costs its own quota otherwise.
+  // One request for everything wanted: each account= costs its own quota otherwise. The caller
+  // passes the accounts to import plus the one it reconciles against, so a balance rides along.
   if (accountIds.length === 1) params.set('account', accountIds[0]);
   return getAccounts(accessUrl, params);
 }

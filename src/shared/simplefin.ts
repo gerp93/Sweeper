@@ -29,6 +29,8 @@ export interface SimplefinAccount {
   orgName: string | null;
   currency: string;
   balance: number | null;
+  // Optional in the protocol: SimpleFIN leaves it out when it equals `balance`.
+  availableBalance: number | null;
   balanceDate: number | null;
   transactions: SimplefinTransaction[];
 }
@@ -45,7 +47,44 @@ export const OVERLAP_DAYS = 7;
 // SimpleFIN allows about 24 requests a day per token; a single sync never makes more than this.
 export const MAX_REQUESTS_PER_SYNC = 4;
 
+// SimpleFIN documents "daily updates" but no time of day, so the schedule is simply 24 hours
+// after the last successful import. One scheduled sync a day is far under the ~24 request quota.
+export const SCHEDULED_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000;
+// Never start two syncs closer together than this (a failed one retries after it, not at once).
+export const MIN_SYNC_GAP_MS = 60 * 60 * 1000;
+
 const DAY_SECONDS = 24 * 60 * 60;
+
+export interface SyncScheduleInput {
+  nowMs: number;
+  lastAttemptAt: string | null;
+  lastSuccessAt: string | null;
+}
+
+// Whether the in-app schedule should start a sync now.
+export function isScheduledSyncDue(input: SyncScheduleInput): boolean {
+  const attempt = input.lastAttemptAt ? Date.parse(input.lastAttemptAt) : NaN;
+  if (Number.isFinite(attempt) && input.nowMs - attempt < MIN_SYNC_GAP_MS) return false;
+  const success = input.lastSuccessAt ? Date.parse(input.lastSuccessAt) : NaN;
+  if (!Number.isFinite(success)) return true;
+  return input.nowMs - success >= SCHEDULED_SYNC_INTERVAL_MS;
+}
+
+// When the schedule will next sync (epoch ms), or null when one is due right away.
+export function nextScheduledSyncMs(input: SyncScheduleInput): number | null {
+  const success = input.lastSuccessAt ? Date.parse(input.lastSuccessAt) : NaN;
+  if (!Number.isFinite(success)) return null;
+  let next = success + SCHEDULED_SYNC_INTERVAL_MS;
+  const attempt = input.lastAttemptAt ? Date.parse(input.lastAttemptAt) : NaN;
+  if (Number.isFinite(attempt)) next = Math.max(next, attempt + MIN_SYNC_GAP_MS);
+  return next <= input.nowMs ? null : next;
+}
+
+// The figure to reconcile against: the available balance, or the plain balance when SimpleFIN
+// omitted the former because the two are the same.
+export function reconcileBalanceOf(account: SimplefinAccount): number | null {
+  return account.availableBalance ?? account.balance;
+}
 
 function isHttpsUrl(value: string): boolean {
   try {
@@ -174,6 +213,7 @@ export function parseAccountSet(raw: unknown): SimplefinAccountSet {
       orgName: (connId ? connections.get(connId) : undefined) ?? (org ? toText(org.name) ?? toText(org.domain) : null),
       currency: toText(acct.currency) ?? 'USD',
       balance: toNumber(acct.balance),
+      availableBalance: toNumber(acct['available-balance']),
       balanceDate: toNumber(acct['balance-date']),
       transactions,
     });
