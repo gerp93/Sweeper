@@ -1,4 +1,4 @@
-import { CSSProperties, useEffect, useMemo, useState } from 'react';
+import { CSSProperties, useEffect, useMemo, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Transaction, CreateTransactionInput } from '../../shared/types/transaction';
 import { Account } from '../../shared/types/account';
@@ -217,6 +217,20 @@ export default function Transactions() {
   useEffect(() => {
     load();
   }, []);
+
+  // An automated import can land while this page is open; reload so the new rows show.
+  const reloadAfterSyncRef = useRef<() => void>(() => {});
+  reloadAfterSyncRef.current = () => {
+    void load();
+    if (currentMonth) void loadBalances(currentMonth);
+  };
+  useEffect(
+    () =>
+      window.electronAPI.simplefin.onSyncFinished((result) => {
+        if (result.ok && result.imported > 0) reloadAfterSyncRef.current();
+      }),
+    []
+  );
 
   useEffect(() => {
     if (currentMonth) loadBalances(currentMonth);

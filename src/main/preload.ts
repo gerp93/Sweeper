@@ -1,4 +1,5 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
+import { SimplefinSyncResult } from '../shared/types/simplefinStatus';
 import { CreateAccountInput, UpdateAccountInput } from '../shared/types/account';
 import { CreateTransactionInput, UpdateTransactionInput } from '../shared/types/transaction';
 import { CreateImportRuleInput, UpdateImportRuleInput } from '../shared/types/importRule';
@@ -54,6 +55,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   importBatches: {
     getAll: () => ipcRenderer.invoke('importBatches:getAll'),
     create: (input: CreateImportBatchInput) => ipcRenderer.invoke('importBatches:create', input),
+  },
+
+  simplefin: {
+    getStatus: () => ipcRenderer.invoke('simplefin:getStatus'),
+    connect: (setupToken: string) => ipcRenderer.invoke('simplefin:connect', setupToken),
+    setSelectedAccounts: (ids: string[]) => ipcRenderer.invoke('simplefin:setSelectedAccounts', ids),
+    syncNow: () => ipcRenderer.invoke('simplefin:syncNow'),
+    disconnect: () => ipcRenderer.invoke('simplefin:disconnect'),
+    onSyncFinished: (callback: (result: SimplefinSyncResult) => void) => {
+      const listener = (_event: IpcRendererEvent, result: SimplefinSyncResult) => callback(result);
+      ipcRenderer.on('simplefin:syncFinished', listener);
+      return () => {
+        ipcRenderer.removeListener('simplefin:syncFinished', listener);
+      };
+    },
   },
 
   balanceAnchors: {

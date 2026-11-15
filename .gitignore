@@ -3,3 +3,4 @@ dist/
 release/
 *.db
 .DS_Store
+dist-test/

@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { AmountDateCollision, ParsedImportRow, findSameDayAmountCollisions, parseStatementCSV } from '../utils/csvParser';
 import { CreateTransactionInput, Transaction } from '../../shared/types/transaction';
 import { Obligation } from '../../shared/types/obligation';
@@ -354,6 +354,10 @@ export default function ImportTransactions() {
         <p className="text-muted" style={{ fontSize: 13, marginBottom: 0 }}>
           Expected columns: Date, Ref/Check, Description, Amount, Balance, Memo, Category — same shape as the bank
           portal export. Rows matching an active import rule are skipped automatically and never stored.
+        </p>
+        <p className="text-muted" style={{ fontSize: 13, marginBottom: 0 }}>
+          To bring transactions in automatically every time Sweeper opens, set up{' '}
+          <Link to="/settings?tab=import">Automated Import in Settings</Link>.
         </p>
       </div>
 
