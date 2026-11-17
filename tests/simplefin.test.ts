@@ -296,3 +296,10 @@ test('nextScheduledSyncMs is a day after the last success, or null when due now'
   const old = new Date(now - 30 * 60 * 60 * 1000).toISOString();
   assert.equal(nextScheduledSyncMs({ nowMs: now, lastAttemptAt: old, lastSuccessAt: old }), null);
 });
+
+test('reconcileBalanceOf shows a liability-style negative figure as positive available credit', () => {
+  const set = parseAccountSet({ accounts: [{ id: 'LOC', name: 'Demo HELOC', balance: '-7447.87' }] });
+  assert.equal(reconcileBalanceOf(set.accounts[0]), 7447.87);
+  const noBalance = parseAccountSet({ accounts: [{ id: 'X', name: 'No balance' }] });
+  assert.equal(reconcileBalanceOf(noBalance.accounts[0]), null);
+});
