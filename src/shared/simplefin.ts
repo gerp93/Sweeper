@@ -82,8 +82,13 @@ export function nextScheduledSyncMs(input: SyncScheduleInput): number | null {
 
 // The figure to reconcile against: the available balance, or the plain balance when SimpleFIN
 // omitted the former because the two are the same.
+//
+// SimpleFIN reports a credit line like a HELOC the way a liability is written (negative), while
+// the bank and the Reconcile page show available credit as a positive number. Available credit
+// is never negative, so the sign is dropped.
 export function reconcileBalanceOf(account: SimplefinAccount): number | null {
-  return account.availableBalance ?? account.balance;
+  const value = account.availableBalance ?? account.balance;
+  return value === null ? null : Math.abs(value);
 }
 
 function isHttpsUrl(value: string): boolean {
