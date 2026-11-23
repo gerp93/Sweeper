@@ -44,5 +44,6 @@ jobs:
     uses: gerp93/KVG_Standards/.github/workflows/release-electron.yml@main
     with:
       version: ${{ needs.version.outputs.new_tag }}
+      test_command: npm test
     permissions:
       contents: write
