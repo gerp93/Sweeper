@@ -4,3 +4,11 @@ release/
 *.db
 .DS_Store
 dist-test/
+
+# Secrets — never committed (see KVG_Standards secrets.md)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
